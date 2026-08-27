@@ -6,7 +6,9 @@
 .env.*
 !.env.example
 *.pem
-credentials.json
+secrets/
+service-account*.json
+*-[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f].json
 
 # Node
 node_modules/
@@ -14,24 +16,25 @@ node_modules/
 out/
 dist/
 *.tsbuildinfo
+next-env.d.ts
 
 # Python
 __pycache__/
 *.py[cod]
 .venv/
-venv/
 .mypy_cache/
 .ruff_cache/
 .pytest_cache/
 *.egg-info/
 
-# Data & models
+# Data, models, uploads
 data/
 uploads/
+storage/
 *.db
 *.sqlite3
 .fastembed_cache/
-storage/
+models/
 
 # Coverage & logs
 coverage/
