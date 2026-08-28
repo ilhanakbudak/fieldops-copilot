@@ -35,7 +35,7 @@ const NAVIGATION: Array<{ label: string; items: NavItem[] }> = [
     items: [
       { href: "/knowledge", label: "Documents", icon: LibraryIcon },
       { href: "/search", label: "Retrieval", icon: SearchIcon },
-      { href: "/chat", label: "Company AI", icon: ChatIcon, soon: true },
+      { href: "/chat", label: "Company AI", icon: ChatIcon },
     ],
   },
   {

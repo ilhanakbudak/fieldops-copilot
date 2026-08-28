@@ -131,6 +131,60 @@ class SearchResponse(Schema):
     searched_roles: list[Role]
 
 
+class CitationOut(Schema):
+    marker: str
+    chunk_id: str
+    document_id: str
+    document_title: str
+    page: int | None
+    section: str | None
+    snippet: str
+
+
+class SourceOut(Schema):
+    """A passage that was retrieved, whether or not the answer cites it.
+
+    Sent before the text so the interface can show what the answer is being
+    grounded in while it is still being written — and so a reader can see that
+    the retrieval was reasonable even when the answer is not.
+    """
+
+    marker: str
+    document_id: str
+    document_title: str
+    page: int | None
+    section: str | None
+    snippet: str
+    score: float
+    ranks: dict[str, int]
+
+
+class AskRequest(Schema):
+    question: str = Field(min_length=1, max_length=2000)
+    conversation_id: str | None = None
+
+
+class ChatMessageOut(Schema):
+    id: str
+    role: str
+    content: str
+    citations: list[CitationOut] = []
+    created_at: datetime
+
+
+class ConversationSummary(Schema):
+    id: str
+    title: str
+    created_at: datetime
+    updated_at: datetime
+
+
+class ConversationDetail(Schema):
+    id: str
+    title: str
+    messages: list[ChatMessageOut]
+
+
 class HealthResponse(Schema):
     status: str
     demo_mode: bool

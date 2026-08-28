@@ -274,3 +274,110 @@ async def test_row_level_security_would_hide_the_chunk_even_without_the_filter(
     visible = (await pg.execute(text("SELECT count(*) FROM chunks"))).scalar_one()
 
     assert visible == 0
+
+
+async def test_the_postgres_keyword_leg_ranks_and_filters(pg: AsyncSession) -> None:
+    """`websearch_to_tsquery` and the generated `tsvector` column are Postgres
+    only, so this SQL never runs on the SQLite path. Without this test the
+    production half of hybrid search is code nobody has executed."""
+    from app.config import get_settings
+    from app.rag.embed import build_embedding_provider
+    from app.rag.ingest import ingest_document
+    from app.rag.search.keyword import keyword_search
+
+    settings = get_settings()
+    embedder = build_embedding_provider(settings)
+
+    await apply_principal(pg, _principal(Role.ADMIN))
+    await ingest_document(
+        pg,
+        data=(
+            b"# Softener Manual\n\n## E-04 Brine Valve Fault\n\n"
+            b"The brine draw cycle completed without the expected drop in level. "
+            b"Check for a salt bridge in the cabinet.\n"
+        ),
+        filename="manual.md",
+        title="Softener Manual",
+        doc_type="manual",
+        allowed_roles=[Role.TECHNICIAN],
+        settings=settings,
+        embedder=embedder,
+    )
+    await ingest_document(
+        pg,
+        data=b"# Dealer Pricing\n\nRadon water system dealer cost is 2400 per unit.\n",
+        filename="pricing.md",
+        title="Dealer Pricing",
+        doc_type="pricing",
+        allowed_roles=[Role.SALES],
+        settings=settings,
+        embedder=embedder,
+    )
+
+    await apply_principal(pg, _principal(Role.TECHNICIAN))
+    hits = await keyword_search(
+        pg, "salt bridge brine", roles=frozenset({Role.TECHNICIAN}), limit=10
+    )
+    assert hits
+    assert all(hit.document_title == "Softener Manual" for hit in hits)
+
+    # The role filter is in the query, not applied afterwards.
+    leaked = await keyword_search(
+        pg, "dealer cost radon", roles=frozenset({Role.TECHNICIAN}), limit=10
+    )
+    assert all(hit.document_title != "Dealer Pricing" for hit in leaked)
+
+    await apply_principal(pg, _principal(Role.SALES))
+    sales = await keyword_search(pg, "dealer cost", roles=frozenset({Role.SALES}), limit=10)
+    assert any(hit.document_title == "Dealer Pricing" for hit in sales)
+
+
+async def test_punctuation_does_not_reach_the_tsquery_parser(pg: AsyncSession) -> None:
+    """`to_tsquery` raises on the first question mark anybody types.
+    `websearch_to_tsquery` does not, which is the whole reason it is used."""
+    from app.rag.search.keyword import keyword_search
+
+    await apply_principal(pg, _principal(Role.TECHNICIAN))
+
+    hits = await keyword_search(
+        pg,
+        'what does "E-04" mean? (urgent) -- customer waiting & holding',
+        roles=frozenset({Role.TECHNICIAN}),
+        limit=5,
+    )
+
+    assert isinstance(hits, list)
+
+
+async def test_a_conversation_is_invisible_to_another_employee_in_the_database(
+    pg: AsyncSession,
+) -> None:
+    """Row-level security on `conversations`, asserted with no application
+    filter in the query at all."""
+    from app.core.clock import utcnow
+    from app.db.models import ChatMessage, Conversation
+
+    owner = _principal(Role.TECHNICIAN)
+    await apply_principal(pg, owner)
+
+    conversation = Conversation(id=new_id(), user_id=owner.user_id, title="E-04 again")
+    pg.add(conversation)
+    await pg.flush()
+    pg.add(
+        ChatMessage(
+            id=new_id(),
+            conversation_id=conversation.id,
+            role="user",
+            content="What does E-04 mean?",
+            created_at=utcnow(),
+        )
+    )
+    await pg.commit()
+
+    # A different employee — an administrator, even — sees nothing.
+    await apply_principal(pg, _principal(Role.ADMIN))
+    conversations = (await pg.execute(text("SELECT count(*) FROM conversations"))).scalar_one()
+    messages = (await pg.execute(text("SELECT count(*) FROM chat_messages"))).scalar_one()
+
+    assert conversations == 0
+    assert messages == 0

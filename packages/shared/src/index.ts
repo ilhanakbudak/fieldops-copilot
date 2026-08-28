@@ -136,16 +136,38 @@ export interface SearchResponse {
   searchedRoles: Role[];
 }
 
-/** A retrieved passage, with enough provenance to render a real citation. */
+/* --- Chat ---------------------------------------------------------------- */
+
+/**
+ * A resolved citation.
+ *
+ * `marker` is what appears in the answer text — `[S1]`. It is assigned when the
+ * passage is retrieved and resolved server-side before the response leaves the
+ * API, so a marker reaching the browser always corresponds to a real passage. A
+ * marker the model invented was removed from the text before it was sent.
+ */
 export interface Citation {
-  id: string;
+  marker: string;
+  chunkId: string;
   documentId: string;
   documentTitle: string;
   /** 1-indexed, as a reader would count. */
   page: number | null;
   section: string | null;
   snippet: string;
+}
+
+/** A passage that was retrieved, whether or not the answer ended up citing it. */
+export interface RetrievedSource {
+  marker: string;
+  documentId: string;
+  documentTitle: string;
+  page: number | null;
+  section: string | null;
+  snippet: string;
   score: number;
+  /** Where each leg of the hybrid search ranked it. Empty for a leg that missed it. */
+  ranks: Partial<Record<"vector" | "keyword", number>>;
 }
 
 export interface ChatMessage {
@@ -156,15 +178,17 @@ export interface ChatMessage {
   createdAt: string;
 }
 
-export interface AskRequest {
-  question: string;
-  conversationId?: string;
+export interface ConversationSummary {
+  id: string;
+  title: string;
+  createdAt: string;
+  updatedAt: string;
 }
 
-export interface AskResponse {
-  conversationId: string;
-  message: ChatMessage;
-  usage: TokenUsage;
+export interface ConversationDetail {
+  id: string;
+  title: string;
+  messages: ChatMessage[];
 }
 
 export interface TokenUsage {
@@ -173,6 +197,25 @@ export interface TokenUsage {
   cachedInputTokens: number;
   /** Computed server-side so the client never has to know model pricing. */
   estimatedCostUsd: number;
+}
+
+/** The `sources` event: what retrieval found, sent before any answer text. */
+export interface SourcesEvent {
+  conversationId: string;
+  sources: RetrievedSource[];
+  retrievalMs: number;
+  candidates: number;
+  reranker: string;
+  rewritten: string;
+}
+
+/** The `done` event: the finished answer, its citations and what it cost. */
+export interface DoneEvent {
+  conversationId: string;
+  messageId: string;
+  text: string;
+  citations: Citation[];
+  usage: TokenUsage;
 }
 
 /** The API's error envelope. Every failure has this shape. */

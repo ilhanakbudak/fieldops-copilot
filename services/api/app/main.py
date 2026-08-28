@@ -7,6 +7,7 @@ credential.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -15,7 +16,7 @@ from fastapi import FastAPI
 from sqlalchemy import func, select
 
 from app.api.middleware import RequestContextMiddleware
-from app.api.routes import admin, auth, documents
+from app.api.routes import admin, auth, chat, documents
 from app.api.schemas import HealthResponse
 from app.config import Settings, get_settings
 from app.core.errors import install_error_handlers
@@ -26,6 +27,12 @@ from app.db.seed import seed_demo_users
 from app.rag.corpus import seed_corpus
 
 logger = logging.getLogger("fieldops")
+
+
+def _warm_reranker() -> None:
+    from app.rag.search.rerank import get_reranker
+
+    get_reranker().score("warm up", ["warm up"])
 
 
 @asynccontextmanager
@@ -53,6 +60,12 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
         if documents:
             logger.info("ingested %d fixture documents", documents)
 
+        # The reranker is another one-off download. Warming it here costs the
+        # same time it would cost anyway and spends it where a startup log
+        # explains the wait, rather than on somebody's first question where a
+        # thirty-second pause is indistinguishable from a hang.
+        await asyncio.to_thread(_warm_reranker)
+
     yield
     await dispose_engine()
 
@@ -70,6 +83,7 @@ install_error_handlers(app)
 app.include_router(auth.router)
 app.include_router(admin.router)
 app.include_router(documents.router)
+app.include_router(chat.router)
 
 
 @app.get("/health", response_model=HealthResponse, tags=["system"])

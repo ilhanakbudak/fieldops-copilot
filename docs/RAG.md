@@ -189,18 +189,166 @@ vanishes and the operator is left guessing.
 
 ---
 
+---
+
+# Querying
+
+## 6. Query analysis
+
+Employees do not type search queries. They type *"the E-04 thing again on the
+Hendersons' unit — what do I check first?"*, and embedding that verbatim buries
+the two characters that matter under context the corpus has never seen.
+
+A cheap model rewrites the question, extracts exact terms, guesses relevant
+document types and classifies the intent. Three constraints on it:
+
+**It runs on the cheap model.** Short, structured, forgiving work. Paying the
+answer model to do it is most of a naive RAG system's bill.
+
+**It cannot fail the request.** A timeout, a malformed response, a provider
+outage — all fall back to the question as written, which is what an unanalysed
+pipeline would have done anyway. A regex still recovers any error code, because
+that is the part worth being certain about. Retrieval degrades; it does not stop.
+
+**Its guesses do not remove documents.** An earlier version passed the guessed
+document type into both search legs as a hard filter. Asked *"why is the water
+warm since the radon system was installed"*, the cheap model saw "installed",
+guessed `sop`, and the service manual that actually answers the question was
+excluded before ranking ever ran. A test caught it. Only the caller's role
+removes a document; a heuristic adjusts ranking.
+
+## 7. Two searches, fused on rank
+
+Embeddings place `E-04` and `E-14` almost on top of each other — two characters
+apart in a space built to collapse surface differences, which is what it is for
+and exactly wrong for a part number. Lexical search has the opposite bias: it
+cannot tell "warm water" from "elevated temperature" and tells `E-04` from
+`E-14` perfectly.
+
+| | |
+|---|---|
+| Postgres | `websearch_to_tsquery` against the generated `tsvector` column, ranked by `ts_rank_cd`. `websearch_` rather than `to_tsquery` because the latter raises on the first question mark anybody types. |
+| SQLite | An FTS5 table kept in step by triggers, ranked by BM25, with `tokenize = "unicode61 tokenchars '-_.'"` so `E-04` and `NG-4200` survive as single terms. |
+
+Terms are OR-ed, not AND-ed. A whole sentence rarely has every word in one
+passage, and requiring that returns nothing — which reads as a broken index
+rather than a strict one. Ranking sorts out relevance; the query's job is
+candidates.
+
+The two lists are then fused with **reciprocal rank fusion**:
+
+```
+score(d) = Σ  1 / (60 + rank(d, list))
+```
+
+Scores are thrown away and only ranks are kept, because a cosine similarity and
+a BM25 value share no scale and normalising them requires knowing distributions
+that change with the corpus, the query and the dialect. Agreement between the
+two legs is the strongest signal available and neither can fake it alone.
+
+## 8. Rerank, then exact terms
+
+Fusion never reads the passages. A cross-encoder reads the question and one
+passage *together* and scores that pair — far more accurate, far too expensive
+to run over a corpus, so it runs over the forty candidates fusion produced.
+`ms-marco-MiniLM-L-6-v2` through FastEmbed: local, CPU, ~90 MB once.
+
+Then one correction on top. A cross-encoder is a general relevance model and
+does not know that `E-04` and `E-02` are different faults rather than
+near-synonyms — asked about one it will happily rank the other above it. A
+passage containing an extracted code verbatim sorts ahead of every passage that
+does not. Applied as a separate sort key rather than an additive bonus, because
+the reranker emits unbounded logits and any constant decisive for one model is
+wrong for the next.
+
+## 9. Expand, then budget
+
+Retrieval matched a precise 900-character chunk. The model reads the **parent
+section**, reassembled from its sibling chunks and stitched on their overlap, so
+it has the sentence that said which valve was under discussion. Passages are
+de-duplicated by parent — two chunks from one section produce one passage, or
+the model reads the same text twice and the context budget pays for it.
+
+Then a hard character cap. Without one, a question that happens to match a long
+table quietly costs ten times what a normal question does.
+
+## 10. Citations, resolved rather than requested
+
+Asking a model to name its sources produces citations that look right and are
+not: a plausible document title, a page number that reads like a page number,
+both invented, with no way for a reader to tell.
+
+So the model is never asked to name anything:
+
+```
+prompt      [S3] NG-4200 Water Softener — Service Manual · page 3
+model       "…break the salt bridge with a broom handle [S3]."
+resolved    S3 → document 8f2c…, page 3, "E-04 Brine Valve Fault"
+```
+
+A marker the model invented — `[S9]` when six passages were retrieved — resolves
+to nothing and is **stripped from the text**. The sentence survives; the false
+attribution does not. That is why this is a server-side resolution step and not
+a rendering concern in the browser.
+
+## 11. The prompt, and what it costs
+
+Assembled in a fixed order: **system rules → passages → conversation →
+question**. Prompt caching keys on an exact prefix match, so the stable parts go
+first and a follow-up re-reads a cached prefix at a fraction of the input price.
+Reordering those for readability would silently disable the discount, which is
+why the assembly lives in one function and says so.
+
+Every call is priced at write time into `usage_events`. Prices change; what a
+call cost on the day it ran does not.
+
+---
+
+## Does it work?
+
+`scripts/evaluate_retrieval.py` scores 23 hand-written cases against the
+synthetic corpus. `--compare` ablates each stage, which is how these numbers
+were arrived at rather than assumed:
+
+```
+23 cases, top-k 2
+
+fusion only            recall@k  83%   MRR 0.778   role isolation 100%
++ exact-term boost     recall@k  83%   MRR 0.806   role isolation 100%
++ cross-encoder        recall@k  94%   MRR 0.917   role isolation 100%
++ both                 recall@k  94%   MRR 0.944   role isolation 100%
+```
+
+At `top-k 6` recall saturates at 100% and MRR runs 0.817 → 0.958. The corpus is
+six documents, so these are not impressive numbers in absolute terms and are not
+offered as such — what they are for is telling whether the next change to
+chunking or ranking made things better or worse.
+
+**Role isolation** is the row that would matter most if it moved. Those cases
+name documents a role must never retrieve. Note that this is not the same as
+expecting an empty result: sales cannot read the service manual but may
+perfectly well retrieve the warranty policy for the same question.
+
+### What the test suite asserts, and what it does not
+
+The suite runs with a deterministic hashing embedder and a lexical reranker, so
+a failure means the pipeline broke rather than that a model had an opinion. That
+costs the ability to assert ranking quality, which is a property of the real
+models — so ranking quality is *measured* by the script above and *not asserted*
+in tests.
+
+One limit worth stating, because it is the honest shape of the headline claim:
+the keyword leg alone cannot separate `E-04` from `E-14`. The E-14 passage says
+"Distinct from E-04 despite the similar code", so it contains the exact term a
+search for `E-04` is looking for, and BM25 then ranks the two within a rounding
+error and prefers whichever is shorter. It is the cross-encoder and the exact-
+term ordering together that separate them. There is a test pinning that limit
+down, rather than an assertion pretending it does not exist.
+
 ## What is not here yet
 
-Milestone 2 is dense vector retrieval. The pipeline it plugs into is designed
-around what comes next, which is why `chunks` already carries a generated
-`tsvector` column and a GIN index on Postgres:
-
-1. **Query analysis** — rewrite, extract filters, classify intent, on a cheap model
-2. **Hybrid search** — vector *and* full-text, fused with reciprocal rank fusion
-3. **Cross-encoder rerank** of the fused top-N
-4. **Parent expansion** — already stored, not yet used at query time
-5. **Structural citations** — markers resolved server-side to document, page and
-   section, with unresolvable markers dropped rather than displayed
-
-Step 2 is the one that makes `E-04` work reliably, and it is why the answer to
-"which vector database" was Postgres.
+- **A semantic cache.** Near-duplicate questions should hit a cached answer
+  keyed by query embedding rather than re-running the pipeline.
+- **Streaming citation resolution.** Markers resolve once, at the end. Resolving
+  as tokens arrive means parsing a marker that may still be half-written.
+- **Query decomposition.** A two-part question is retrieved as one query.

@@ -25,11 +25,13 @@ const CHROME =
  */
 const SHOTS = [
   { name: "sign-in", path: "/sign-in", width: 1280, height: 860, as: null },
+  { name: "chat", path: "/chat", width: 1440, height: 1000, as: "tech@example.com", ask: "What does error code E-04 mean?", expand: true },
+  { name: "chat-declined", path: "/chat", width: 1440, height: 700, as: "sales@example.com", ask: "What does error code E-04 mean?" },
   { name: "knowledge", path: "/knowledge", width: 1440, height: 900, as: "admin@example.com" },
   { name: "retrieval-technician", path: "/search", width: 1440, height: 980, as: "tech@example.com", search: "What does error code E-04 mean?" },
   { name: "retrieval-sales", path: "/search", width: 1440, height: 980, as: "sales@example.com", search: "What is the dealer cost of a radon system?" },
-  { name: "knowledge-tablet", path: "/knowledge", width: 834, height: 900, as: "admin@example.com" },
-  { name: "knowledge-mobile", path: "/knowledge", width: 390, height: 780, as: "tech@example.com" },
+  { name: "chat-tablet", path: "/chat", width: 834, height: 1000, as: "tech@example.com", ask: "Why has the water been warm since the radon system was installed?" },
+  { name: "chat-mobile", path: "/chat", width: 390, height: 800, as: "tech@example.com", ask: "What does error code E-04 mean?" },
 ];
 
 const PASSWORD = "demo-password-1234";
@@ -117,6 +119,24 @@ async function main() {
 
     await send("Page.navigate", { url: BASE + shot.path });
     await sleep(1600);
+
+    if (shot.ask) {
+      await send("Runtime.evaluate", {
+        awaitPromise: true,
+        expression: `(async () => {
+          const input = document.querySelector('input[aria-label="Ask a question"]');
+          const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set;
+          setter.call(input, ${JSON.stringify(shot.ask)});
+          input.dispatchEvent(new Event("input", { bubbles: true }));
+          input.form.requestSubmit();
+          // Long enough for retrieval, the stream, and the citation chips.
+          await new Promise((resolve) => setTimeout(resolve, 6000));
+          ${shot.expand ? `document.querySelector("details")?.setAttribute("open", "");` : ""}
+          await new Promise((resolve) => setTimeout(resolve, 400));
+        })()`,
+      });
+      await sleep(800);
+    }
 
     if (shot.search) {
       await send("Runtime.evaluate", {

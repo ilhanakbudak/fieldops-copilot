@@ -1,5 +1,7 @@
 import type {
   ApiErrorBody,
+  ConversationDetail,
+  ConversationSummary,
   DocumentSummary,
   IngestResponse,
   MeResponse,
@@ -94,6 +96,13 @@ export const api = {
     }),
 
   remove: (id: string) => request<void>(`/documents/${id}`, { method: "DELETE" }),
+
+  conversations: () => request<ConversationSummary[]>("/chat/conversations"),
+
+  conversation: (id: string) => request<ConversationDetail>(`/chat/conversations/${id}`),
+
+  deleteConversation: (id: string) =>
+    request<void>(`/chat/conversations/${id}`, { method: "DELETE" }),
 
   search: (query: string, limit = 10) =>
     request<SearchResponse>(

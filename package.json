@@ -27,6 +27,7 @@
     "api:install": "cd services/api && uv sync",
     "api:migrate": "cd services/api && uv run python -m app.cli migrate",
     "api:seed": "cd services/api && uv run python -m app.cli seed",
+    "eval": "cd services/api && uv run python scripts/evaluate_retrieval.py",
     "api:lint": "cd services/api && uv run ruff check . && uv run ruff format --check .",
     "api:typecheck": "cd services/api && uv run mypy app",
     "api:test": "cd services/api && uv run pytest -q",

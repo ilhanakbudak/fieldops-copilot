@@ -10,7 +10,7 @@ export default function Index() {
   const router = useRouter();
 
   useEffect(() => {
-    if (status === "signed-in") router.replace("/knowledge");
+    if (status === "signed-in") router.replace("/chat");
     if (status === "signed-out") router.replace("/sign-in");
   }, [status, router]);
 

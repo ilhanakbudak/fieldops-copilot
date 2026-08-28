@@ -1,0 +1,214 @@
+{
+  "$comment": [
+    "A retrieval evaluation set. Each case names the question and the role",
+    "asking it, then asserts one of three things:",
+    "",
+    "  expect_sections   at least one of these must reach the top k — recall",
+    "  forbid_documents  none of these may be retrieved at all — role isolation",
+    "  expect_empty      nothing at all should come back",
+    "",
+    "The distinction between the last two matters. A role that cannot read the",
+    "service manual may still legitimately retrieve the warranty policy for the",
+    "same question; asserting an empty result there would be testing the wrong",
+    "thing and would fail for the right reasons.",
+    "",
+    "Written by hand against the synthetic corpus, which is the only honest way",
+    "to build one of these — a set generated from the same embeddings it is",
+    "meant to evaluate measures nothing."
+  ],
+  "cases": [
+    {
+      "id": "code-e04",
+      "question": "What does error code E-04 mean?",
+      "role": "technician",
+      "expect_sections": [
+        "E-04 Brine Valve Fault"
+      ],
+      "note": "The headline case. E-04 and E-14 are near-identical vectors."
+    },
+    {
+      "id": "code-e14",
+      "question": "What is E-14?",
+      "role": "technician",
+      "expect_sections": [
+        "E-14 Reserve Capacity Exceeded"
+      ],
+      "note": "The other half of the pair. Retrieving E-04 here is the failure."
+    },
+    {
+      "id": "code-e02-symptom",
+      "question": "The head cannot confirm a valve position, what should I check?",
+      "role": "technician",
+      "expect_sections": [
+        "E-02 Position Error"
+      ],
+      "note": "No code in the question. Vector search has to carry this one."
+    },
+    {
+      "id": "warm-water-radon",
+      "question": "My customer says their water has been warm ever since the radon system was installed",
+      "role": "office",
+      "expect_sections": [
+        "2. Warm Water After Installation",
+        "5. Customer Handover"
+      ],
+      "note": "The scenario the whole product exists for."
+    },
+    {
+      "id": "warranty-radon",
+      "question": "What is our warranty on a radon water system?",
+      "role": "sales",
+      "expect_sections": [
+        "1. Coverage"
+      ]
+    },
+    {
+      "id": "warranty-freezing",
+      "question": "Is freeze damage covered?",
+      "role": "office",
+      "expect_sections": [
+        "3. What Is Not Covered"
+      ]
+    },
+    {
+      "id": "salt-bridge",
+      "question": "How do I clear a salt bridge?",
+      "role": "technician",
+      "expect_sections": [
+        "E-04 Brine Valve Fault"
+      ]
+    },
+    {
+      "id": "resin-life",
+      "question": "How long should softener resin last on well water?",
+      "role": "technician",
+      "expect_sections": [
+        "4. Resin Replacement"
+      ]
+    },
+    {
+      "id": "rotten-egg",
+      "question": "Customer complains of a rotten egg smell, what treatment do they need?",
+      "role": "sales",
+      "expect_sections": [
+        "Rotten Egg Smell"
+      ]
+    },
+    {
+      "id": "orange-staining",
+      "question": "What causes orange staining on fixtures?",
+      "role": "technician",
+      "expect_sections": [
+        "Orange or Brown Staining"
+      ]
+    },
+    {
+      "id": "blue-green",
+      "question": "Blue green stains in the sink",
+      "role": "office",
+      "expect_sections": [
+        "Blue-Green Staining"
+      ]
+    },
+    {
+      "id": "install-permit",
+      "question": "Do we need a permit before a whole house installation?",
+      "role": "office",
+      "expect_sections": [
+        "1. Before the Truck Leaves"
+      ]
+    },
+    {
+      "id": "bypass-valve",
+      "question": "Do we have to fit a bypass valve?",
+      "role": "technician",
+      "expect_sections": [
+        "3. Installation"
+      ]
+    },
+    {
+      "id": "dealer-cost-radon",
+      "question": "What is the dealer cost of a radon aeration system?",
+      "role": "sales",
+      "expect_sections": [
+        "1. Equipment"
+      ]
+    },
+    {
+      "id": "margin-floor",
+      "question": "What is the minimum gross margin before I need approval?",
+      "role": "sales",
+      "expect_sections": [
+        "2. Margin Floor"
+      ]
+    },
+    {
+      "id": "labour-rate-out-of-hours",
+      "question": "What do we charge for an out of hours service call?",
+      "role": "sales",
+      "expect_sections": [
+        "3. Labour"
+      ]
+    },
+    {
+      "id": "pricing-hidden-from-technician",
+      "question": "What is the dealer cost of a radon aeration system?",
+      "role": "technician",
+      "note": "Not merely absent from the answer. Never in the candidate set.",
+      "forbid_documents": [
+        "Dealer Price List and Margin Guide"
+      ]
+    },
+    {
+      "id": "pricing-hidden-from-office",
+      "question": "What is our margin on an NG-4800?",
+      "role": "office",
+      "forbid_documents": [
+        "Dealer Price List and Margin Guide"
+      ]
+    },
+    {
+      "id": "manual-hidden-from-sales",
+      "question": "What does error code E-04 mean?",
+      "role": "sales",
+      "note": "Sales may still retrieve the warranty policy for this question — what must not happen is the service manual appearing.",
+      "forbid_documents": [
+        "NG-4200 Water Softener — Service Manual",
+        "NG-RN Radon Water Aeration System — Service Manual"
+      ]
+    },
+    {
+      "id": "radon-service-interval",
+      "question": "How often does an aeration system need servicing?",
+      "role": "technician",
+      "expect_sections": [
+        "3. Routine Service"
+      ]
+    },
+    {
+      "id": "sop-hidden-from-sales",
+      "question": "What is our procedure before starting a whole house installation?",
+      "role": "sales",
+      "forbid_documents": [
+        "Standard Operating Procedure — Whole-House Installation"
+      ]
+    },
+    {
+      "id": "margin-hidden-from-technician",
+      "question": "What is the minimum gross margin before I need approval?",
+      "role": "technician",
+      "forbid_documents": [
+        "Dealer Price List and Margin Guide"
+      ]
+    },
+    {
+      "id": "admin-sees-everything",
+      "question": "What is the dealer cost of a radon aeration system?",
+      "role": "admin",
+      "expect_sections": [
+        "1. Equipment"
+      ],
+      "note": "The other side of the boundary: an admin reads every audience."
+    }
+  ]
+}

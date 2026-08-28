@@ -35,7 +35,34 @@ class Settings(BaseSettings):
 
     openai_api_key: str | None = None
     embedding_model: str = "text-embedding-3-small"
+
+    # "mock" answers from the retrieved passages with no model and no
+    # credentials, so the repository is demonstrable end to end on a fresh
+    # clone. It is extractive, not generative — see app/llm/mock.py.
+    llm_provider: Literal["mock", "openai"] = "mock"
+
+    # Two tiers, on purpose. Query rewriting and intent classification are short
+    # and forgiving; paying the answer model to do them is most of a naive RAG
+    # system's bill.
     chat_model: str = "gpt-5.6-terra"
+    cheap_model: str = "gpt-5.6-luna"
+
+    # --- Retrieval ----------------------------------------------------------
+    # Candidates fetched from each leg of the hybrid search before fusion.
+    # Generous, because rank fusion can only reorder what it was given.
+    retrieval_candidates: int = 40
+    # Passages that survive reranking and reach the prompt.
+    retrieval_top_k: int = 6
+    # Hard ceiling on retrieved context, in characters. The cheapest token is
+    # the one not sent: without a cap, a question that matches a long table
+    # quietly costs ten times what a normal one does.
+    context_char_budget: int = 12_000
+
+    # cross-encoder — a local ONNX reranker; the largest single quality gain in
+    #                 the pipeline, and a ~90 MB download on first use.
+    # lexical       — deterministic term-overlap scoring, used by the tests.
+    # none          — trust rank fusion alone.
+    rerank_provider: Literal["cross-encoder", "lexical", "none"] = "cross-encoder"
 
     # --- Ingestion ----------------------------------------------------------
     # pdfplumber is MIT and the default. pymupdf is markedly faster and AGPL-3.0,

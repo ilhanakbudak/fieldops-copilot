@@ -14,10 +14,10 @@
   <img alt="License" src="https://img.shields.io/badge/license-MIT-blue">
 </p>
 
-> **🚧 In progress.** Sign in, upload a manual, and search it — that all works
-> today, with role-filtered retrieval enforced in the query and in the database.
-> Generation, the connectors and live call assist land milestone by milestone;
-> see [Status](#status).
+> **🚧 In progress.** Sign in, upload a manual, and ask questions of it — that
+> works today, with cited answers and role filtering enforced in the query and
+> in the database. The connectors and live call assist land milestone by
+> milestone; see [Status](#status).
 
 ---
 
@@ -54,35 +54,44 @@ all needing a specific fact from a document nobody can find:
 ## What it does today
 
 <p align="center">
+  <img alt="An employee asking what error code E-04 means, and getting a cited answer with the retrieval detail expanded" src="docs/assets/chat.png" width="880">
+</p>
+
+Ask a question, get an answer with a citation on every claim. Each `[S1]` is a
+chip: click it and the passage it came from opens underneath, with the document,
+section and page.
+
+The panel at the bottom is the part I would want to see in someone else's
+repository. It shows every passage retrieved — not just the cited ones — and
+where each leg of the hybrid search ranked it: `v2 k2` means second on vector
+and second on keyword, `k—` means the keyword leg missed it entirely. When an
+answer is wrong, that line is the difference between *retrieval found the wrong
+passage* and *retrieval was fine and generation ignored it*. Those look identical
+from a chat window and have nothing in common as fixes.
+
+**The same question, asked by someone who may not read the answer:**
+
+<p align="center">
+  <img alt="A salesperson asking the same question and being told the answer is not in the documents they can read" src="docs/assets/chat-declined.png" width="880">
+  <br><em>Sales cannot read service manuals. Not filtered out of the answer —
+  those passages never entered the candidate set.</em>
+</p>
+
+Documents are tagged with the roles they are written for. That tag is not a label
+on a screen: it is copied onto every chunk, and it is what the retrieval query
+filters on.
+
+<p align="center">
   <img alt="The document library, with each document tagged with the roles it is written for" src="docs/assets/knowledge.png" width="880">
 </p>
 
-Upload a manual, an SOP or a policy and tag it with the roles it is written for.
-That tag is not a label on a screen — it is copied onto every chunk and it is
-what the retrieval query filters on.
-
-Which makes the access-control model demonstrable in one query rather than
-described in a paragraph. The same question, asked by two employees:
+There is also a **Retrieval** page that runs the search with no model in the
+loop, showing raw passages and similarity scores — the tool for asking whether
+retrieval is the problem before changing anything about the prompt.
 
 <p align="center">
-  <img alt="A technician searching for a dealer cost and getting service-manual passages" src="docs/assets/retrieval-technician.png" width="880">
-  <br><em>Technician — the service manual, section and page.</em>
-</p>
-
-<p align="center">
-  <img alt="A salesperson searching for a dealer cost and getting the price list" src="docs/assets/retrieval-sales.png" width="880">
-  <br><em>Sales, asking for dealer cost. A technician asking the same thing gets
-  nothing from the price list — those chunks never entered the candidate set.</em>
-</p>
-
-The Retrieval page is deliberately not a chat window. It shows the raw passages
-and their scores, which is what separates *retrieval found the wrong passage*
-from *retrieval was fine and generation ignored it* — two failures that look
-identical from a chat window and have nothing in common as fixes.
-
-<p align="center">
-  <img alt="The library on a tablet, sidebar collapsed to an icon rail" src="docs/assets/knowledge-tablet.png" width="420">
-  <img alt="The library on a phone, each row a card" src="docs/assets/knowledge-mobile.png" width="200">
+  <img alt="The chat on a tablet, sidebar collapsed to an icon rail" src="docs/assets/chat-tablet.png" width="400">
+  <img alt="The chat on a phone" src="docs/assets/chat-mobile.png" width="190">
   <br><em>iPad and phone. Three layouts, chosen by what the screen can do rather
   than by device name.</em>
 </p>
@@ -111,10 +120,13 @@ flowchart LR
 ### How a document becomes an answer
 
 ```
-bytes → pages → blocks → units → chunks → vectors → rows
+INGEST   bytes → pages → blocks → units → chunks → vectors → rows
+QUERY    question → analyse → vector ∥ keyword → fuse → rerank → expand → budget
+                                                            ↓
+                                    prompt → model → resolve citations
 ```
 
-Two of those steps are where the quality actually comes from, and both exist
+Four of those steps are where the quality actually comes from, and each exists
 because the obvious implementation fails in a way that is hard to see:
 
 **A page is the unit of extraction, not a document.** So a scanned insert inside
@@ -127,13 +139,26 @@ and `### E-04 Brine Valve Fault` is a block of its own. Emit that as a chunk and
 it embeds beautifully against a query about that heading and contains no answer.
 Headings are merged forward into the text they introduce.
 
+**Search runs twice and the ranks are fused.** Embeddings put `E-04` and `E-14`
+almost on top of each other — two characters apart in a space built to collapse
+surface differences. Lexical search tells them apart perfectly and cannot tell
+"warm water" from "elevated temperature". Reciprocal rank fusion keeps only the
+ranks, because a cosine similarity and a BM25 score share no scale.
+
+**Citations are resolved, never requested.** Asking a model to name its sources
+produces plausible, invented ones with no way for a reader to tell. Instead each
+passage is rendered under an opaque marker, the model may only emit those
+markers, and the API resolves them against what was actually retrieved before
+the response leaves the server. A marker the model invented is stripped from the
+text — the sentence survives, the false attribution does not.
+
 PDF extraction defaults to **pdfplumber** rather than PyMuPDF, and that is a
 licence decision as much as a technical one: PyMuPDF is faster and is AGPL-3.0,
 which an MIT repository should not take as a hard dependency on its users'
 behalf. It is an opt-in extra behind the same protocol.
 
-The whole pipeline — including which OCR engine and why the benchmark leader is
-the wrong default — is in [**docs/RAG.md**](docs/RAG.md).
+The whole pipeline — including the measured ablation, which OCR engine, and why
+the benchmark leader is the wrong default — is in [**docs/RAG.md**](docs/RAG.md).
 
 ### How access control is enforced
 
@@ -206,7 +231,8 @@ precisely the thing pgvector's HNSW replaces once the corpus is real.
 | Auth | Server-side sessions, Argon2id, RBAC enforced in the retrieval query |
 | Ingestion | pdfplumber (MIT) · PyMuPDF and PaddleOCR as optional extras |
 | Embeddings | Local ONNX by default; OpenAI `text-embedding-3-small` in production — both at 384 dimensions, so the schema does not change when a deployment switches |
-| Generation | OpenAI, behind a provider abstraction |
+| Retrieval | Hybrid vector + FTS, reciprocal rank fusion, local cross-encoder rerank |
+| Generation | OpenAI, behind a provider abstraction — with an extractive mock so the repository runs with no key |
 | Realtime | WebSocket — transcript in, suggestions out |
 
 Types shared between the two halves live in `packages/shared`, generated from the
@@ -249,7 +275,16 @@ npm run verify              # exactly what CI runs, fail-fast
 npm run api:migrate         # apply migrations against a real Postgres
 npm run api:seed            # re-seed the demo accounts and corpus
 npm run screenshots         # regenerate the images above from a running instance
+npm run eval                # score retrieval; --compare ablates each stage
 ```
+
+Answers in demo mode come from an **extractive stand-in**, not a language model:
+it selects the sentences from the retrieved passages that best match the
+question and attaches their citation markers. That is stated plainly because the
+alternative is a reviewer seeing fluent prose and believing otherwise. What it
+demonstrates is the pipeline — retrieval, role filtering, citation resolution,
+streaming, cost accounting. Set `LLM_PROVIDER=openai` with a key and the same
+pipeline produces real answers.
 
 No accounts are needed in demo mode: a local SQLite database, a local vector
 store, local embeddings, and synthetic data. Point `DATABASE_URL` at a Supabase
@@ -266,10 +301,12 @@ fieldops-copilot/
 │   ├── app/audit/      the append-only trail, and cost accounting
 │   ├── app/db/         models, dialect-portable column types, seed data
 │   ├── app/api/        routes, dependencies, request context
-│   ├── app/rag/        extract · chunk · embed · store · ingest
+│   ├── app/llm/        provider abstraction, cost accounting
+│   ├── app/rag/        extract · chunk · embed · store · search · cite · answer
 │   └── alembic/        migrations — the single source of truth for the schema
 ├── packages/shared/    types shared across the boundary
 ├── fixtures/corpus/    the synthetic corpus, as reviewable Markdown
+├── fixtures/eval/      the retrieval evaluation set
 └── infra/              deployment notes, Supabase preparation
 ```
 
@@ -280,7 +317,7 @@ fieldops-copilot/
 | 0 · Monorepo, toolchain, CI | ✅ |
 | 1 · Authentication, roles, audit trail, data layer | ✅ |
 | 2 · Document ingestion + role-filtered vector retrieval | ✅ |
-| 3 · Hybrid retrieval, reranking, chat with citations | ⬜ |
+| 3 · Hybrid retrieval, reranking, chat with citations | ✅ |
 | 4 · Service Fusion connector (read-only) | ⬜ |
 | 5 · Ply inventory connector | ⬜ |
 | 6 · RingCentral caller lookup and real-time call assistance | ⬜ |
@@ -296,13 +333,19 @@ model.
 **Milestone 2** — a page-level extraction pipeline with OCR fallback,
 structure-aware chunking with parent sections, three embedding providers at one
 vector width, two vector stores behind one protocol, and document management
-with role tagging that rewrites its chunks. 116 tests.
+with role tagging that rewrites its chunks.
+
+**Milestone 3** — query analysis on a cheap model, hybrid vector + full-text
+search fused on rank, cross-encoder reranking with exact-term ordering, parent
+expansion under a context budget, structurally resolved citations, and a
+streamed chat endpoint. Plus an evaluation set and a script that scores
+recall@k and MRR, with an ablation for each stage. 171 tests.
 
 ## Documentation
 
 | | |
 |---|---|
-| [docs/RAG.md](docs/RAG.md) | Extraction, OCR, chunking, embeddings, and why Postgres |
+| [docs/RAG.md](docs/RAG.md) | The whole pipeline, ingest and query, with the measured ablation |
 | [docs/SECURITY.md](docs/SECURITY.md) | Sessions, the role filter, the audit trail |
 | [infra/README.md](infra/README.md) | Migrations, and preparing a Supabase project |
 | [fixtures/README.md](fixtures/README.md) | The synthetic corpus and what each document is for |
