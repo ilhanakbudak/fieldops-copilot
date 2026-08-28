@@ -1,0 +1,140 @@
+.searchBar {
+  display: flex;
+  gap: var(--space-3);
+  margin-bottom: var(--space-6);
+}
+
+.searchInput {
+  flex: 1;
+}
+
+@media (max-width: 599px) {
+  .searchBar {
+    flex-direction: column;
+  }
+}
+
+.examples {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-bottom: var(--space-6);
+}
+
+.example {
+  padding: var(--space-2) var(--space-3);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+  text-align: left;
+  cursor: pointer;
+  transition: background var(--transition), border-color var(--transition);
+}
+
+.example:hover {
+  background: var(--surface-hover);
+  border-color: var(--border-strong);
+  color: var(--text);
+}
+
+.scope {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-4);
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+}
+
+.results {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.hit {
+  padding: var(--space-5);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-xs);
+}
+
+.hitHeader {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-bottom: var(--space-3);
+}
+
+.hitTitle {
+  font-size: var(--text-base);
+  font-weight: 600;
+}
+
+.hitPath {
+  margin-top: 2px;
+  font-size: var(--text-xs);
+  color: var(--text-tertiary);
+}
+
+/* The score is the reason this page exists — it is what separates "retrieval
+   found the wrong passage" from "retrieval was fine and generation ignored it".
+   Tabular figures so the column does not jitter between queries. */
+.score {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex: none;
+}
+
+.scoreBar {
+  width: 56px;
+  height: 4px;
+  background: var(--gray-200);
+  border-radius: var(--radius-full);
+  overflow: hidden;
+}
+
+.scoreFill {
+  height: 100%;
+  background: var(--accent-500);
+  border-radius: var(--radius-full);
+}
+
+.scoreValue {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  font-variant-numeric: tabular-nums;
+  color: var(--text-secondary);
+}
+
+.snippet {
+  font-size: var(--text-md);
+  line-height: 1.6;
+  color: var(--text-secondary);
+  /* `pre-wrap`, because this shows the passage exactly as it was indexed.
+     Collapsing the newlines would render a manual's table as one run-on line
+     and hide the thing this page exists to let you judge — whether the chunk
+     that was retrieved actually holds the answer. */
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  /* Long enough to judge relevance, short enough that several fit on a screen. */
+  display: -webkit-box;
+  -webkit-line-clamp: 6;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.note {
+  padding: var(--space-4);
+  background: var(--surface-sunken);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+}

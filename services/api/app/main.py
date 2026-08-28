@@ -15,7 +15,7 @@ from fastapi import FastAPI
 from sqlalchemy import func, select
 
 from app.api.middleware import RequestContextMiddleware
-from app.api.routes import admin, auth
+from app.api.routes import admin, auth, documents
 from app.api.schemas import HealthResponse
 from app.config import Settings, get_settings
 from app.core.errors import install_error_handlers
@@ -23,6 +23,7 @@ from app.db.engine import dispose_engine, get_sessionmaker, session_scope
 from app.db.migrate import upgrade_to_head
 from app.db.models import Document
 from app.db.seed import seed_demo_users
+from app.rag.corpus import seed_corpus
 
 logger = logging.getLogger("fieldops")
 
@@ -43,6 +44,15 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
         if created:
             logger.info("seeded %d demo accounts", created)
 
+        # Ingesting the corpus loads the embedding model, which on a cold
+        # machine means a one-off ~130 MB download. Doing it at boot rather
+        # than on the first question means the delay is visible in the startup
+        # log instead of looking like a hung request.
+        async with session_scope() as db:
+            documents = await seed_corpus(db)
+        if documents:
+            logger.info("ingested %d fixture documents", documents)
+
     yield
     await dispose_engine()
 
@@ -59,6 +69,7 @@ install_error_handlers(app)
 
 app.include_router(auth.router)
 app.include_router(admin.router)
+app.include_router(documents.router)
 
 
 @app.get("/health", response_model=HealthResponse, tags=["system"])

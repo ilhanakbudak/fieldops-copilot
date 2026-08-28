@@ -24,6 +24,7 @@ from app.config import get_settings
 from app.db.engine import dispose_engine, session_scope
 from app.db.migrate import upgrade_to_head
 from app.db.seed import DEMO_PASSWORD, DEMO_USERS, seed_demo_users
+from app.rag.corpus import seed_corpus
 
 
 async def _seed() -> int:
@@ -34,11 +35,14 @@ async def _seed() -> int:
 
     async with session_scope() as db:
         created = await seed_demo_users(db)
+    async with session_scope() as db:
+        documents = await seed_corpus(db)
 
     print(f"Demo accounts ready ({created} created, {len(DEMO_USERS) - created} already present).")
     for email, name, role in DEMO_USERS:
         print(f"  {role.value:<11} {email:<22} {name}")
     print(f"\nPassword for all of them: {DEMO_PASSWORD}")
+    print(f"\nCorpus: {documents} document(s) ingested.")
     return 0
 
 

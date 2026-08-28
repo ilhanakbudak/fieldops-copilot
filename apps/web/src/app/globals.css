@@ -1,115 +1,276 @@
-:root {
-  color-scheme: light dark;
-  --bg: #f6f8fa;
-  --surface: #ffffff;
-  --border: #e3e8ef;
-  --text: #0d1520;
-  --text-2: #5a6a7e;
-  --accent: #1d4ed8;
+/* ===========================================================================
+   FieldOps Copilot — design tokens and base styles
+
+   Three constraints shape everything below.
+
+   **Light only.** Not an oversight. A single, well-tuned light palette reads as
+   a considered product; two half-tuned ones read as a template. Dark mode is a
+   real feature with real work behind it — contrast pairs, elevation, shadow
+   substitutes — and shipping it badly costs more credibility than not shipping
+   it. The tokens are structured so it is one block to add later.
+
+   **Restrained colour.** This is an interface people use for six hours a day
+   while a customer is on the phone. Colour carries meaning here — one accent
+   for the primary action, three semantics for state — and nothing else. A
+   role, a document type and a status are all rendered in neutrals, because if
+   everything is coloured then nothing is.
+
+   **Density.** 14px base, not 16. Field-service staff scan tables of parts,
+   jobs and documents; a comfortable reading measure is the wrong optimisation
+   for a screen whose job is to show more rows.
+   =========================================================================== */
+
+@font-face {
+  font-family: "Inter";
+  src: url("/fonts/inter-latin-var.woff2") format("woff2");
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA,
+    U+02DC, U+2000-206F, U+2074, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #090c11;
-    --surface: #11161d;
-    --border: #222c38;
-    --text: #e8eef6;
-    --text-2: #93a3b6;
-    --accent: #6d94ff;
+@font-face {
+  font-family: "JetBrains Mono";
+  src: url("/fonts/jetbrains-mono-latin-var.woff2") format("woff2");
+  font-weight: 100 800;
+  font-style: normal;
+  font-display: swap;
+}
+
+:root {
+  /* --- Neutrals ---------------------------------------------------------
+     A single cool-grey ramp. Every surface, border and text colour in the
+     product is drawn from these nine steps, which is what stops an interface
+     drifting into six slightly different greys. */
+  --gray-0: #ffffff;
+  --gray-25: #fcfcfd;
+  --gray-50: #f8f9fb;
+  --gray-100: #f1f3f7;
+  --gray-200: #e4e7ec;
+  --gray-300: #d0d5dd;
+  --gray-400: #98a2b3;
+  --gray-500: #667085;
+  --gray-600: #475467;
+  --gray-700: #344054;
+  --gray-800: #1d2939;
+  --gray-900: #101828;
+
+  /* --- Accent -----------------------------------------------------------
+     One blue, used for the primary action, the focus ring and the current nav
+     item. Nothing else. */
+  --accent-50: #eff4ff;
+  --accent-100: #dbe6ff;
+  --accent-200: #b8ccff;
+  --accent-500: #2563eb;
+  --accent-600: #1d4ed8;
+  --accent-700: #1a44bb;
+
+  /* --- Semantics --------------------------------------------------------
+     Reserved for state that a user must not misread. */
+  --success-50: #ecfdf3;
+  --success-200: #abefc6;
+  --success-700: #067647;
+  --warning-50: #fffaeb;
+  --warning-200: #fedf89;
+  --warning-700: #b54708;
+  --danger-50: #fef3f2;
+  --danger-200: #fecdca;
+  --danger-500: #d92d20;
+  --danger-700: #b42318;
+
+  /* --- Semantic aliases -------------------------------------------------
+     Components reference these, never the ramp directly, so a palette change
+     is one block rather than a search-and-replace. */
+  --bg: var(--gray-50);
+  --surface: var(--gray-0);
+  --surface-sunken: var(--gray-50);
+  --surface-hover: var(--gray-100);
+  --border: var(--gray-200);
+  --border-strong: var(--gray-300);
+  --text: var(--gray-900);
+  --text-secondary: var(--gray-600);
+  --text-tertiary: var(--gray-500);
+  --text-inverse: var(--gray-0);
+
+  /* --- Type -------------------------------------------------------------
+     A tight functional scale. Six sizes is enough for an application; more
+     invites inconsistency without adding meaning. */
+  --font-sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+    Helvetica, Arial, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  --text-xs: 0.75rem;    /* 12 — metadata, table captions */
+  --text-sm: 0.8125rem;  /* 13 — labels, secondary */
+  --text-base: 0.875rem; /* 14 — body, the workhorse */
+  --text-md: 0.9375rem;  /* 15 — reading passages */
+  --text-lg: 1.0625rem;  /* 17 — card and section titles */
+  --text-xl: 1.375rem;   /* 22 — page titles */
+  --text-2xl: 1.75rem;   /* 28 — the one display size */
+
+  /* --- Spacing ----------------------------------------------------------
+     A 4px grid. Named by step rather than by pixel so the rhythm survives a
+     change of base. */
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.25rem;
+  --space-6: 1.5rem;
+  --space-8: 2rem;
+  --space-10: 2.5rem;
+  --space-12: 3rem;
+  --space-16: 4rem;
+
+  --radius-sm: 4px;
+  --radius: 6px;
+  --radius-lg: 8px;
+  --radius-xl: 12px;
+  --radius-full: 999px;
+
+  /* Shadows are barely there on purpose. Elevation in a light interface comes
+     from the border first; the shadow only stops a card looking painted on. */
+  --shadow-xs: 0 1px 2px rgba(16, 24, 40, 0.05);
+  --shadow-sm: 0 1px 3px rgba(16, 24, 40, 0.08), 0 1px 2px rgba(16, 24, 40, 0.04);
+  --shadow-md: 0 4px 8px -2px rgba(16, 24, 40, 0.08), 0 2px 4px -2px rgba(16, 24, 40, 0.04);
+  --shadow-lg: 0 12px 16px -4px rgba(16, 24, 40, 0.08), 0 4px 6px -2px rgba(16, 24, 40, 0.03);
+
+  --sidebar-width: 248px;
+  --rail-width: 68px;
+  --header-height: 56px;
+
+  --transition: 140ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* --- Reset ---------------------------------------------------------------- */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+* {
+  margin: 0;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  min-height: 100dvh;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-sans);
+  font-size: var(--text-base);
+  line-height: 1.55;
+  /* Inter's tabular figures keep numeric columns from jittering as values
+     change — scores, counts, page numbers. */
+  font-feature-settings: "cv05" 1, "ss03" 1;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+img,
+svg {
+  display: block;
+  max-width: 100%;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+  color: inherit;
+}
+
+h1, h2, h3, h4 {
+  font-weight: 600;
+  letter-spacing: -0.011em;
+  line-height: 1.3;
+}
+
+h1 { font-size: var(--text-xl); }
+h2 { font-size: var(--text-lg); }
+h3 { font-size: var(--text-base); }
+
+a {
+  color: var(--accent-600);
+  text-decoration: none;
+}
+
+a:hover {
+  text-decoration: underline;
+}
+
+/* --- Focus ----------------------------------------------------------------
+   One ring, everywhere, and only for keyboard users. Removing focus styling
+   without replacing it is the single most common accessibility failure in
+   interfaces that otherwise look considered. */
+
+:focus-visible {
+  outline: 2px solid var(--accent-500);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
+::selection {
+  background: var(--accent-100);
+}
+
+/* Respect the setting. Vestibular disorders are not an edge case. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
   }
 }
 
-* { box-sizing: border-box; }
+/* --- Utilities ------------------------------------------------------------ */
 
-body {
-  margin: 0;
-  background: var(--bg);
-  color: var(--text);
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-  line-height: 1.55;
-  -webkit-font-smoothing: antialiased;
-}
-
-/* --- Shared primitives -----------------------------------------------------
-   Plain CSS while the surface is small. It moves to Tailwind with the chat UI,
-   where the number of one-off layouts stops making hand-written rules the
-   cheaper option. */
-
-.panel {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  padding: 20px;
-}
-
-.field {
-  display: grid;
-  gap: 6px;
-  margin-bottom: 14px;
-}
-
-.field label {
-  font-size: 13px;
-  color: var(--text-2);
-}
-
-.field input {
-  font: inherit;
-  padding: 9px 11px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: var(--bg);
-  color: var(--text);
-}
-
-.field input:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 1px;
-}
-
-.button {
-  font: inherit;
-  font-weight: 550;
-  padding: 9px 16px;
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
   border: 0;
-  border-radius: 8px;
-  background: var(--accent);
-  color: #fff;
-  cursor: pointer;
 }
 
-.button:disabled {
-  opacity: 0.55;
-  cursor: default;
+/* Visible the moment it is focused — the first stop for a keyboard user, and
+   the difference between navigating this app and tabbing through a sidebar on
+   every single page load. */
+.skip-link {
+  position: absolute;
+  top: var(--space-2);
+  left: var(--space-2);
+  z-index: 100;
+  padding: var(--space-2) var(--space-4);
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-md);
+  transform: translateY(-200%);
 }
 
-.button--quiet {
-  background: transparent;
-  color: var(--text-2);
-  border: 1px solid var(--border);
+.skip-link:focus-visible {
+  transform: translateY(0);
 }
 
-.chip {
-  display: inline-block;
-  font-size: 12px;
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  padding: 3px 8px;
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  color: var(--text-2);
+.mono {
+  font-family: var(--font-mono);
+  font-size: 0.9em;
+  font-variant-numeric: tabular-nums;
 }
 
-.chip--held {
-  border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
-  color: var(--accent);
-}
-
-.error {
-  font-size: 14px;
-  color: #b42318;
-  margin: 0 0 12px;
-}
-
-@media (prefers-color-scheme: dark) {
-  .error { color: #ff9a90; }
+.tabular {
+  font-variant-numeric: tabular-nums;
 }

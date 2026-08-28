@@ -1,0 +1,398 @@
+/* Shared primitives. CSS Modules rather than a utility framework: the surface
+   is small, the class names describe intent, and a reviewer can read what a
+   component looks like without holding a utility vocabulary in their head. */
+
+/* --- Button --------------------------------------------------------------- */
+
+.button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  /* 36px tall on pointer devices; the media query at the bottom of this file
+     raises it to 44 on touch, which is the accessible minimum. */
+  min-height: 36px;
+  padding: 0 var(--space-4);
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  font-size: var(--text-base);
+  font-weight: 500;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background var(--transition), border-color var(--transition),
+    box-shadow var(--transition);
+}
+
+.button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.primary {
+  background: var(--accent-600);
+  color: var(--text-inverse);
+  box-shadow: var(--shadow-xs);
+}
+
+.primary:hover:not(:disabled) {
+  background: var(--accent-700);
+}
+
+.secondary {
+  background: var(--surface);
+  border-color: var(--border-strong);
+  color: var(--text-secondary);
+  box-shadow: var(--shadow-xs);
+}
+
+.secondary:hover:not(:disabled) {
+  background: var(--surface-hover);
+  color: var(--text);
+}
+
+.ghost {
+  background: transparent;
+  color: var(--text-secondary);
+}
+
+.ghost:hover:not(:disabled) {
+  background: var(--surface-hover);
+  color: var(--text);
+}
+
+/* Destructive actions are quiet until they are hovered.
+   A row of red buttons makes deletion the most prominent thing on a page whose
+   job is reading — and trains people to ignore the colour that is supposed to
+   make them stop. */
+.danger {
+  background: transparent;
+  border-color: transparent;
+  color: var(--text-tertiary);
+}
+
+.danger:hover:not(:disabled),
+.danger:focus-visible {
+  background: var(--danger-50);
+  border-color: var(--danger-200);
+  color: var(--danger-700);
+}
+
+.small {
+  min-height: 30px;
+  padding: 0 var(--space-3);
+  font-size: var(--text-sm);
+}
+
+.iconOnly {
+  padding: 0;
+  width: 36px;
+}
+
+/* --- Field ---------------------------------------------------------------- */
+
+.field {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.label {
+  font-size: var(--text-sm);
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+
+.hint {
+  font-size: var(--text-xs);
+  color: var(--text-tertiary);
+}
+
+.control {
+  width: 100%;
+  min-height: 38px;
+  padding: var(--space-2) var(--space-3);
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  color: var(--text);
+  transition: border-color var(--transition), box-shadow var(--transition);
+}
+
+.control::placeholder {
+  color: var(--gray-400);
+}
+
+.control:hover:not(:disabled) {
+  border-color: var(--gray-400);
+}
+
+.control:focus {
+  outline: none;
+  border-color: var(--accent-500);
+  /* A ring drawn as a shadow rather than an outline, so it follows the input's
+     rounded corners exactly. */
+  box-shadow: 0 0 0 3px var(--accent-100);
+}
+
+.control:disabled {
+  background: var(--surface-sunken);
+  color: var(--text-tertiary);
+  cursor: not-allowed;
+}
+
+.invalid {
+  border-color: var(--danger-500);
+}
+
+.invalid:focus {
+  box-shadow: 0 0 0 3px var(--danger-50);
+}
+
+.errorText {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-sm);
+  color: var(--danger-700);
+}
+
+/* --- Card ----------------------------------------------------------------- */
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-xs);
+}
+
+.cardHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-4);
+  padding: var(--space-5) var(--space-6);
+  border-bottom: 1px solid var(--border);
+}
+
+.cardTitle {
+  font-size: var(--text-lg);
+  font-weight: 600;
+}
+
+.cardDescription {
+  margin-top: var(--space-1);
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+}
+
+.cardBody {
+  padding: var(--space-6);
+}
+
+/* --- Badge ---------------------------------------------------------------- */
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 2px var(--space-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  background: var(--surface-sunken);
+  color: var(--text-secondary);
+  font-size: var(--text-xs);
+  font-weight: 500;
+  line-height: 1.5;
+  white-space: nowrap;
+}
+
+.badgeSuccess {
+  background: var(--success-50);
+  border-color: var(--success-200);
+  color: var(--success-700);
+}
+
+.badgeWarning {
+  background: var(--warning-50);
+  border-color: var(--warning-200);
+  color: var(--warning-700);
+}
+
+.badgeDanger {
+  background: var(--danger-50);
+  border-color: var(--danger-200);
+  color: var(--danger-700);
+}
+
+.badgeAccent {
+  background: var(--accent-50);
+  border-color: var(--accent-200);
+  color: var(--accent-700);
+}
+
+/* --- Table ---------------------------------------------------------------- */
+
+/* Wide tables scroll inside their own container. The page body must never
+   scroll horizontally — that is what turns a data table into an unusable one
+   on a phone. */
+.tableScroll {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--text-base);
+}
+
+.table th {
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--border);
+  background: var(--surface-sunken);
+  text-align: left;
+  font-size: var(--text-xs);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-tertiary);
+  white-space: nowrap;
+}
+
+.table td {
+  padding: var(--space-4);
+  border-bottom: 1px solid var(--border);
+  vertical-align: top;
+}
+
+.table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.table tbody tr:hover {
+  background: var(--surface-sunken);
+}
+
+/* On a narrow screen a `stacked` table becomes one card per row.
+   Six columns on a 390px phone is either unreadable or a horizontal scroll
+   nobody discovers. The `data-label` on each cell carries the column heading
+   down with it, so the meaning survives losing the header row. */
+@media (max-width: 767px) {
+  .stacked thead {
+    /* `clip`, not `display: none`: the headers stay in the accessibility tree
+       for a screen reader even though sighted users read the labels instead. */
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+  }
+
+  .stacked tbody tr {
+    display: grid;
+    gap: var(--space-3);
+    padding: var(--space-4);
+    border-bottom: 1px solid var(--border);
+  }
+
+  .stacked td {
+    display: grid;
+    grid-template-columns: 7.5rem 1fr;
+    align-items: start;
+    /* `start`, not the default `stretch` — otherwise a pill stretches to fill
+       the column and stops looking like a pill. */
+    justify-items: start;
+    gap: var(--space-1) var(--space-3);
+    padding: 0;
+    border: 0;
+  }
+
+  .stacked td::before {
+    content: attr(data-label);
+    grid-column: 1;
+    grid-row: 1;
+    font-size: var(--text-xs);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--text-tertiary);
+    padding-top: 2px;
+  }
+
+  /* Pin every child to the value column, so a cell with two elements — a title
+     and its filename — stacks under the label instead of wrapping back under
+     it. */
+  .stacked td > * {
+    grid-column: 2;
+  }
+}
+
+/* --- Empty and loading states --------------------------------------------- */
+
+.empty {
+  display: grid;
+  justify-items: center;
+  gap: var(--space-2);
+  padding: var(--space-12) var(--space-6);
+  text-align: center;
+}
+
+.emptyTitle {
+  font-size: var(--text-base);
+  font-weight: 600;
+}
+
+.emptyBody {
+  max-width: 42ch;
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+}
+
+.skeleton {
+  background: linear-gradient(
+    90deg,
+    var(--gray-100) 25%,
+    var(--gray-200) 37%,
+    var(--gray-100) 63%
+  );
+  background-size: 400% 100%;
+  border-radius: var(--radius);
+  animation: shimmer 1.4s ease infinite;
+}
+
+@keyframes shimmer {
+  from { background-position: 100% 50%; }
+  to { background-position: 0 50%; }
+}
+
+.spinner {
+  width: 15px;
+  height: 15px;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: spin 620ms linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* --- Touch ----------------------------------------------------------------
+   Not a width query. A 13-inch touchscreen still needs a 44px target, and a
+   small window on a laptop does not. */
+@media (pointer: coarse) {
+  .button {
+    min-height: 44px;
+  }
+
+  .small {
+    min-height: 38px;
+  }
+
+  .control {
+    min-height: 44px;
+    /* Anything under 16px makes iOS zoom the viewport on focus, which then
+       does not zoom back out. */
+    font-size: 1rem;
+  }
+}

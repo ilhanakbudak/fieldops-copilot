@@ -37,9 +37,38 @@ class Settings(BaseSettings):
     embedding_model: str = "text-embedding-3-small"
     chat_model: str = "gpt-5.6-terra"
 
+    # --- Ingestion ----------------------------------------------------------
+    # pdfplumber is MIT and the default. pymupdf is markedly faster and AGPL-3.0,
+    # so it is an opt-in extra rather than a dependency this repository imposes.
+    pdf_extractor: Literal["pdfplumber", "pymupdf"] = "pdfplumber"
+
+    # Scanned pages carry no text layer. When one is detected the page is routed
+    # to OCR instead — "none" leaves it empty and reports it, rather than
+    # silently ingesting a blank page as if it were a real one.
+    ocr_provider: Literal["none", "paddle"] = "none"
+
+    # A page whose extracted text is shorter than this is treated as having no
+    # usable text layer. Manuals have running headers and page numbers, so the
+    # threshold has to clear those rather than sit at zero.
+    ocr_min_chars_per_page: int = 96
+
+    # Retrieval matches the small chunk and the prompt receives the parent
+    # section, so precision and context are tuned separately. Characters, not
+    # tokens: the splitter works on text, and one round of conversion is one
+    # place for the two numbers to disagree.
+    chunk_chars: int = 900
+    chunk_overlap_chars: int = 150
+    parent_chars: int = 3200
+
+    max_upload_bytes: int = 40 * 1024 * 1024
+
     # Local ONNX embeddings by default: ingesting a 400-page manual should not
     # cost anything, and it keeps the demo credential-free.
-    embedding_provider: Literal["local", "openai"] = "local"
+    #
+    # "hashing" is a deterministic stand-in used by the test suite. It is not a
+    # semantic model and never should be — it exists so the suite stays
+    # hermetic and fast instead of downloading 130 MB of ONNX weights.
+    embedding_provider: Literal["local", "openai", "hashing"] = "local"
 
     # One dimension for both providers, so the schema does not change when a
     # deployment switches. The local model (bge-small) is natively 384; OpenAI's
@@ -95,8 +124,8 @@ class Settings(BaseSettings):
         return self.sqlalchemy_url.startswith("postgresql")
 
     @property
-    def vector_store(self) -> Literal["pgvector", "sqlite-vec"]:
-        return "pgvector" if self.is_postgres else "sqlite-vec"
+    def vector_store(self) -> Literal["pgvector", "sqlite"]:
+        return "pgvector" if self.is_postgres else "sqlite"
 
     @property
     def cookies_require_https(self) -> bool:

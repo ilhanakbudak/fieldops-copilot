@@ -16,7 +16,23 @@ dependencies = [
     "argon2-cffi>=25.1",
     "pgvector>=0.4",
     "email-validator>=2.2",
+    "pdfplumber>=0.11",
+    "numpy>=2.1",
+    "fastembed>=0.7",
+    "python-multipart>=0.0.20",
 ]
+
+[project.optional-dependencies]
+# Both are opt-in, for different reasons.
+#
+# PyMuPDF is markedly faster than the pdfplumber default, and is AGPL-3.0 — a
+# licence this MIT repository will not take as a hard dependency. Install it
+# deliberately, or hold a commercial licence, then set PDF_EXTRACTOR=pymupdf.
+#
+# PaddleOCR only matters for scanned pages, and pulls in a deep-learning runtime
+# most deployments never need. See docs/RAG.md.
+pymupdf = ["pymupdf>=1.26"]
+ocr = ["paddleocr>=3.6", "paddlepaddle>=3.2"]
 
 [dependency-groups]
 dev = [
@@ -26,6 +42,7 @@ dev = [
     "mypy>=1.18",
     "httpx>=0.28.1",
     "httpx2>=2.12.0",
+    "reportlab>=4.2",
 ]
 
 [build-system]

@@ -80,6 +80,57 @@ class AuditPage(Schema):
     total: int
 
 
+class DocumentSummary(Schema):
+    id: str
+    title: str
+    doc_type: str
+    source_filename: str
+    page_count: int | None
+    chunk_count: int
+    allowed_roles: list[Role]
+    status: str
+    error: str | None
+    ingested_at: datetime | None
+    created_at: datetime | None
+
+
+class IngestResponse(Schema):
+    document: DocumentSummary
+    chunks: int
+    pages: int
+    # Pages that produced no text and had no OCR to fall through to. Reported
+    # rather than swallowed: "ready" on a manual with forty blank pages is a
+    # status nobody should trust.
+    pages_without_text: list[int]
+    duration_ms: int
+
+
+class RetagRequest(Schema):
+    allowed_roles: list[Role] = Field(min_length=1)
+
+
+class SearchRequest(Schema):
+    query: str = Field(min_length=1, max_length=1000)
+    limit: int = Field(default=10, ge=1, le=50)
+
+
+class SearchHitOut(Schema):
+    chunk_id: str
+    document_id: str
+    document_title: str
+    content: str
+    page: int | None
+    section: str | None
+    score: float
+
+
+class SearchResponse(Schema):
+    hits: list[SearchHitOut]
+    # What the caller was allowed to search. Surfaced so a thin result set is
+    # legibly a permission boundary rather than a broken index.
+    searched_roles: list[Role]
+
+
 class HealthResponse(Schema):
     status: str
     demo_mode: bool

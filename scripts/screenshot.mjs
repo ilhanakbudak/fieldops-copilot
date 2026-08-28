@@ -19,11 +19,17 @@ const PORT = 9333;
 const CHROME =
   process.env.CHROME_PATH ?? "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
 
-/** Signed out, then signed in as each role whose permissions differ visibly. */
+/**
+ * Each shot names the page, the width it is captured at, and who is signed in.
+ * The three widths are the three layouts: full sidebar, icon rail, drawer.
+ */
 const SHOTS = [
-  { name: "sign-in", width: 1100, height: 620, as: null },
-  { name: "permissions-technician", width: 1100, height: 560, as: "tech@example.com" },
-  { name: "permissions-admin", width: 1100, height: 560, as: "admin@example.com" },
+  { name: "sign-in", path: "/sign-in", width: 1280, height: 860, as: null },
+  { name: "knowledge", path: "/knowledge", width: 1440, height: 900, as: "admin@example.com" },
+  { name: "retrieval-technician", path: "/search", width: 1440, height: 980, as: "tech@example.com", search: "What does error code E-04 mean?" },
+  { name: "retrieval-sales", path: "/search", width: 1440, height: 980, as: "sales@example.com", search: "What is the dealer cost of a radon system?" },
+  { name: "knowledge-tablet", path: "/knowledge", width: 834, height: 900, as: "admin@example.com" },
+  { name: "knowledge-mobile", path: "/knowledge", width: 390, height: 780, as: "tech@example.com" },
 ];
 
 const PASSWORD = "demo-password-1234";
@@ -86,31 +92,45 @@ async function main() {
       width: shot.width,
       height: shot.height,
       deviceScaleFactor: 2,
-      mobile: false,
+      mobile: shot.width < 768,
+      // Below 768 the layout switches on pointer type as well as width, and a
+      // desktop Chrome reports a fine pointer however narrow the window is.
+      screenOrientation: { angle: 0, type: "portraitPrimary" },
     });
-    await send("Page.navigate", { url: BASE });
-    await sleep(1400);
+    await send("Emulation.setTouchEmulationEnabled", { enabled: shot.width < 900 });
 
-    if (shot.as) {
-      // Sign in through the API so the screenshot shows the signed-in panel
-      // without scripting the form.
+    await send("Page.navigate", { url: BASE });
+    await sleep(900);
+
+    // Authenticate through the API rather than by scripting the form: the shot
+    // is of the page, not of the sign-in animation.
+    await send("Runtime.evaluate", {
+      awaitPromise: true,
+      expression: shot.as
+        ? `fetch("/api/auth/login", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ email: ${JSON.stringify(shot.as)}, password: ${JSON.stringify(PASSWORD)} })
+          })`
+        : `fetch("/api/auth/logout", { method: "POST" })`,
+    });
+
+    await send("Page.navigate", { url: BASE + shot.path });
+    await sleep(1600);
+
+    if (shot.search) {
       await send("Runtime.evaluate", {
         awaitPromise: true,
-        expression: `fetch("/api/auth/login", {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ email: ${JSON.stringify(shot.as)}, password: ${JSON.stringify(PASSWORD)} })
-        })`,
+        expression: `(async () => {
+          const input = document.querySelector('input[type=search]');
+          const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set;
+          setter.call(input, ${JSON.stringify(shot.search)});
+          input.dispatchEvent(new Event("input", { bubbles: true }));
+          input.form.requestSubmit();
+          await new Promise((resolve) => setTimeout(resolve, 1800));
+        })()`,
       });
-      await send("Page.navigate", { url: BASE });
-      await sleep(1400);
-    } else {
-      await send("Runtime.evaluate", {
-        awaitPromise: true,
-        expression: `fetch("/api/auth/logout", { method: "POST" })`,
-      });
-      await send("Page.navigate", { url: BASE });
-      await sleep(1200);
+      await sleep(600);
     }
 
     // The dev-mode overlay is not part of the product.

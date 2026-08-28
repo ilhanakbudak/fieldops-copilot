@@ -85,6 +85,57 @@ export interface AuditPage {
   total: number;
 }
 
+/* --- Knowledge base ------------------------------------------------------ */
+
+export type DocumentStatus = "pending" | "processing" | "ready" | "failed";
+
+export interface DocumentSummary {
+  id: string;
+  title: string;
+  docType: string;
+  sourceFilename: string;
+  pageCount: number | null;
+  chunkCount: number;
+  /**
+   * The employee audiences this document is written for.
+   *
+   * Also the filter the retrieval query runs on — the same list is denormalised
+   * onto every chunk, so changing it here rewrites them.
+   */
+  allowedRoles: Role[];
+  status: DocumentStatus;
+  error: string | null;
+  ingestedAt: string | null;
+  createdAt: string | null;
+}
+
+export interface IngestResponse {
+  document: DocumentSummary;
+  chunks: number;
+  pages: number;
+  /** Pages that yielded no text and had no OCR to fall through to. */
+  pagesWithoutText: number[];
+  durationMs: number;
+}
+
+export interface SearchHit {
+  chunkId: string;
+  documentId: string;
+  documentTitle: string;
+  content: string;
+  page: number | null;
+  section: string | null;
+  /** Cosine similarity, −1 to 1. Higher is nearer. */
+  score: number;
+}
+
+export interface SearchResponse {
+  hits: SearchHit[];
+  /** What the caller was permitted to search, so a thin result set is legibly
+   *  a permission boundary rather than a broken index. */
+  searchedRoles: Role[];
+}
+
 /** A retrieved passage, with enough provenance to render a real citation. */
 export interface Citation {
   id: string;
@@ -142,7 +193,7 @@ export interface ApiErrorBody {
 export interface HealthResponse {
   status: "ok";
   demoMode: boolean;
-  vectorStore: "pgvector" | "sqlite-vec";
+  vectorStore: "pgvector" | "sqlite";
   embeddings: string;
   documents: number;
 }

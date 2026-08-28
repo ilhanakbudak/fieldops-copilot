@@ -36,17 +36,25 @@ def _isolated_database(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Itera
     # run time and nothing would be learned from it.
     monkeypatch.setenv("ARGON2_TIME_COST", "1")
     monkeypatch.setenv("ARGON2_MEMORY_KIB", "8")
+    # A deterministic stand-in, not a semantic model. The suite asserts that the
+    # pipeline wires up and that the role filter holds; asserting that
+    # bge-small ranks well would be testing somebody else's model, at the cost
+    # of a 130 MB download on every clean CI run.
+    monkeypatch.setenv("EMBEDDING_PROVIDER", "hashing")
     monkeypatch.chdir(tmp_path)
 
     # Imported here rather than at module scope: `get_settings` is cached, and
     # the cache has to be cleared after the environment is set, not before.
     from app.config import get_settings
+    from app.rag.embed import reset_embedding_provider
 
     get_settings.cache_clear()
     reset_throttle()
+    reset_embedding_provider()
     yield
     get_settings.cache_clear()
     reset_throttle()
+    reset_embedding_provider()
 
 
 def _new_client() -> AsyncClient:

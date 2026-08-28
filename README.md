@@ -14,9 +14,10 @@
   <img alt="License" src="https://img.shields.io/badge/license-MIT-blue">
 </p>
 
-> **🚧 In progress.** Authentication, roles and the audit trail are done and
-> demonstrable — clone it and sign in. The retrieval pipeline and the connectors
-> land milestone by milestone; see [Status](#status).
+> **🚧 In progress.** Sign in, upload a manual, and search it — that all works
+> today, with role-filtered retrieval enforced in the query and in the database.
+> Generation, the connectors and live call assist land milestone by milestone;
+> see [Status](#status).
 
 ---
 
@@ -50,20 +51,40 @@ all needing a specific fact from a document nobody can find:
 - *Pull up John Smith in Portland — what did we install and what was the last call about?*
 - *Where's the 1-inch PEX ball valve and how many do we have?*
 
-## Signing in
-
-Four synthetic employees, one per role. Signing in as each shows what that role
-is allowed to do — and the same table is what the API authorises against, not a
-decoration on top of it.
+## What it does today
 
 <p align="center">
-  <img alt="A technician's permissions" src="docs/assets/permissions-technician.png" width="720">
-  <br><em>Technician — no pricing, no call assist, no administration.</em>
+  <img alt="The document library, with each document tagged with the roles it is written for" src="docs/assets/knowledge.png" width="880">
+</p>
+
+Upload a manual, an SOP or a policy and tag it with the roles it is written for.
+That tag is not a label on a screen — it is copied onto every chunk and it is
+what the retrieval query filters on.
+
+Which makes the access-control model demonstrable in one query rather than
+described in a paragraph. The same question, asked by two employees:
+
+<p align="center">
+  <img alt="A technician searching for a dealer cost and getting service-manual passages" src="docs/assets/retrieval-technician.png" width="880">
+  <br><em>Technician — the service manual, section and page.</em>
 </p>
 
 <p align="center">
-  <img alt="An administrator's permissions" src="docs/assets/permissions-admin.png" width="720">
-  <br><em>The same screen as an administrator.</em>
+  <img alt="A salesperson searching for a dealer cost and getting the price list" src="docs/assets/retrieval-sales.png" width="880">
+  <br><em>Sales, asking for dealer cost. A technician asking the same thing gets
+  nothing from the price list — those chunks never entered the candidate set.</em>
+</p>
+
+The Retrieval page is deliberately not a chat window. It shows the raw passages
+and their scores, which is what separates *retrieval found the wrong passage*
+from *retrieval was fine and generation ignored it* — two failures that look
+identical from a chat window and have nothing in common as fixes.
+
+<p align="center">
+  <img alt="The library on a tablet, sidebar collapsed to an icon rail" src="docs/assets/knowledge-tablet.png" width="420">
+  <img alt="The library on a phone, each row a card" src="docs/assets/knowledge-mobile.png" width="200">
+  <br><em>iPad and phone. Three layouts, chosen by what the screen can do rather
+  than by device name.</em>
 </p>
 
 ## Planned architecture
@@ -87,6 +108,33 @@ flowchart LR
     TEL -.->|"live transcript"| API
 ```
 
+### How a document becomes an answer
+
+```
+bytes → pages → blocks → units → chunks → vectors → rows
+```
+
+Two of those steps are where the quality actually comes from, and both exist
+because the obvious implementation fails in a way that is hard to see:
+
+**A page is the unit of extraction, not a document.** So a scanned insert inside
+an otherwise digital manual falls through to OCR on its own, and "which pages
+needed OCR" is answerable afterwards. Running OCR over a 400-page manual to
+recover three scanned diagrams costs a hundred times what the diagrams are worth.
+
+**Blocks are merged before they become chunks.** Split a manual on blank lines
+and `### E-04 Brine Valve Fault` is a block of its own. Emit that as a chunk and
+it embeds beautifully against a query about that heading and contains no answer.
+Headings are merged forward into the text they introduce.
+
+PDF extraction defaults to **pdfplumber** rather than PyMuPDF, and that is a
+licence decision as much as a technical one: PyMuPDF is faster and is AGPL-3.0,
+which an MIT repository should not take as a hard dependency on its users'
+behalf. It is an opt-in extra behind the same protocol.
+
+The whole pipeline — including which OCR engine and why the benchmark leader is
+the wrong default — is in [**docs/RAG.md**](docs/RAG.md).
+
 ### How access control is enforced
 
 The interesting decision is not that there are roles. It is **where the role
@@ -99,12 +147,12 @@ prompt from that list before the filter runs, restricted text goes into the
 model's context and out through its answer. The UI never shows it; the answer
 quotes it.
 
-So the caller's role is a required argument to retrieval, `chunks` carries the
-audience it belongs to on the row the vector index already scans, and on
-Postgres **row-level security enforces the same rule underneath the
-application** — policies keyed on a `SET LOCAL` setting the API applies per
-transaction, with `FORCE ROW LEVEL SECURITY` so the connecting role does not
-bypass its own policies.
+So `roles` is a required argument on the vector store's protocol — no default,
+no overload without it — `chunks` carries the audience it belongs to on the row
+the vector index already scans, and on Postgres **row-level security enforces
+the same rule underneath the application**: policies keyed on a `SET LOCAL`
+setting the API applies per transaction, with `FORCE ROW LEVEL SECURITY` so the
+connecting role does not bypass its own policies.
 
 That last layer is the strongest argument for Postgres here. A filter in
 application code is one refactor away from being wrong; a policy in the database
@@ -142,9 +190,11 @@ is a property of the corpus rather than of the identity provider. Argon2id and a
 `sessions` table is not the hard part of this system.
 
 `VectorStore` is a protocol. A Weaviate or Qdrant adapter drops in the same way —
-which is the honest answer to "which vector database", and why the local
-`sqlite-vec` fallback exists: it makes the repository runnable with no accounts,
-and proves the abstraction is real rather than asserted.
+which is the honest answer to "which vector database", and why the local SQLite
+fallback exists: it makes the repository runnable with no accounts, and proves
+the abstraction is real rather than asserted. That fallback does exact
+brute-force cosine with no index, which is correct at demo scale and is
+precisely the thing pgvector's HNSW replaces once the corpus is real.
 
 ## Stack
 
@@ -154,7 +204,8 @@ and proves the abstraction is real rather than asserted.
 | API | Python 3.13, FastAPI, Pydantic v2 |
 | Data | Supabase — Postgres, pgvector, storage, RLS; SQLAlchemy 2 + Alembic |
 | Auth | Server-side sessions, Argon2id, RBAC enforced in the retrieval query |
-| Embeddings | Local ONNX by default; OpenAI `text-embedding-3-small` in production |
+| Ingestion | pdfplumber (MIT) · PyMuPDF and PaddleOCR as optional extras |
+| Embeddings | Local ONNX by default; OpenAI `text-embedding-3-small` in production — both at 384 dimensions, so the schema does not change when a deployment switches |
 | Generation | OpenAI, behind a provider abstraction |
 | Realtime | WebSocket — transcript in, suggestions out |
 
@@ -188,10 +239,16 @@ The password for all four is `demo-password-1234`. They are synthetic, and
 `example.com` is the reserved documentation domain, so none of this can be
 mistaken for a real address.
 
+On first run the API downloads a ~130 MB ONNX embedding model, then caches it —
+so the first boot takes about half a minute and every one after that is
+instant. It also ingests the synthetic corpus, six documents of a fictional
+water-treatment company, so there is something to search immediately.
+
 ```bash
 npm run verify              # exactly what CI runs, fail-fast
 npm run api:migrate         # apply migrations against a real Postgres
-npm run api:seed            # re-seed the demo accounts
+npm run api:seed            # re-seed the demo accounts and corpus
+npm run screenshots         # regenerate the images above from a running instance
 ```
 
 No accounts are needed in demo mode: a local SQLite database, a local vector
@@ -209,8 +266,10 @@ fieldops-copilot/
 │   ├── app/audit/      the append-only trail, and cost accounting
 │   ├── app/db/         models, dialect-portable column types, seed data
 │   ├── app/api/        routes, dependencies, request context
+│   ├── app/rag/        extract · chunk · embed · store · ingest
 │   └── alembic/        migrations — the single source of truth for the schema
 ├── packages/shared/    types shared across the boundary
+├── fixtures/corpus/    the synthetic corpus, as reviewable Markdown
 └── infra/              deployment notes, Supabase preparation
 ```
 
@@ -220,18 +279,33 @@ fieldops-copilot/
 |---|---|
 | 0 · Monorepo, toolchain, CI | ✅ |
 | 1 · Authentication, roles, audit trail, data layer | ✅ |
-| 2 · Document ingestion + hybrid retrieval with citations | ⬜ |
-| 3 · Service Fusion connector (read-only) | ⬜ |
-| 4 · Ply inventory connector | ⬜ |
-| 5 · RingCentral caller lookup and real-time call assistance | ⬜ |
-| 6 · Cost dashboard, deployment, documentation | ⬜ |
+| 2 · Document ingestion + role-filtered vector retrieval | ✅ |
+| 3 · Hybrid retrieval, reranking, chat with citations | ⬜ |
+| 4 · Service Fusion connector (read-only) | ⬜ |
+| 5 · Ply inventory connector | ⬜ |
+| 6 · RingCentral caller lookup and real-time call assistance | ⬜ |
+| 7 · Cost dashboard, deployment, documentation | ⬜ |
 
-Milestone 1 in detail: Argon2id passwords, revocable server-side sessions with a
+**Milestone 1** — Argon2id passwords, revocable server-side sessions with a
 sliding idle window and a hard ceiling, four roles behind one permission table,
 an append-only audit trail correlated by request id, account disable that takes
-effect on the live session, and Postgres row-level security — exercised against
-a real `pgvector` container in CI, because policies nobody runs are not a
-security model. 74 tests.
+effect on the live session, and Postgres row-level security, exercised against a
+real `pgvector` container in CI because policies nobody runs are not a security
+model.
+
+**Milestone 2** — a page-level extraction pipeline with OCR fallback,
+structure-aware chunking with parent sections, three embedding providers at one
+vector width, two vector stores behind one protocol, and document management
+with role tagging that rewrites its chunks. 116 tests.
+
+## Documentation
+
+| | |
+|---|---|
+| [docs/RAG.md](docs/RAG.md) | Extraction, OCR, chunking, embeddings, and why Postgres |
+| [docs/SECURITY.md](docs/SECURITY.md) | Sessions, the role filter, the audit trail |
+| [infra/README.md](infra/README.md) | Migrations, and preparing a Supabase project |
+| [fixtures/README.md](fixtures/README.md) | The synthetic corpus and what each document is for |
 
 ## Related
 

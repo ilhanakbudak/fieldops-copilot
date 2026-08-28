@@ -32,6 +32,8 @@ from __future__ import annotations
 
 import json
 import logging
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from contextvars import ContextVar
 from typing import Any
 
@@ -124,6 +126,33 @@ def open_buffer() -> list[TelemetryEvent]:
     events: list[TelemetryEvent] = []
     _buffer.set(events)
     return events
+
+
+@asynccontextmanager
+async def telemetry_unit() -> AsyncIterator[None]:
+    """One unit of work outside HTTP — a CLI command, ingestion, boot.
+
+    `session_scope` wraps every transaction in this, so anything that audits
+    while a transaction is open gets the same buffering the middleware provides
+    for a request. Without it, ingesting the fixture corpus took 34 seconds
+    instead of 3: each `audit()` opened a second connection, found the write
+    lock held by the transaction that was calling it, and waited out the SQLite
+    busy timeout before dropping the record.
+
+    Re-entrant on purpose. If a buffer is already open — a request, or an outer
+    unit — this yields to it rather than opening a second one, so the events
+    are flushed once, by whoever opened it.
+    """
+    if _buffer.get() is not None:
+        yield
+        return
+
+    events = open_buffer()
+    try:
+        yield
+    finally:
+        close_buffer()
+        await drain(events)
 
 
 def close_buffer() -> None:

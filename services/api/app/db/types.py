@@ -83,8 +83,8 @@ class Embedding(TypeDecorator[list[float]]):
     """A chunk embedding.
 
     On Postgres this is `pgvector`'s `vector(n)`, indexed with HNSW. On SQLite it
-    is the same float32 buffer `sqlite-vec` expects, stored as a blob — the
-    ingestion milestone reads it back through the same column either way.
+    is a packed float32 buffer — compact, exactly reversible, and read back
+    through the same column either way.
     """
 
     impl = LargeBinary

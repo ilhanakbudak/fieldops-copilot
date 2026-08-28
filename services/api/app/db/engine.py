@@ -125,8 +125,19 @@ async def apply_principal(session: AsyncSession, principal: Principal | None) ->
 
 @asynccontextmanager
 async def session_scope(principal: Principal | None = None) -> AsyncIterator[AsyncSession]:
-    """A transaction that commits on success and rolls back on anything else."""
-    async with get_sessionmaker()() as session:
+    """A transaction that commits on success and rolls back on anything else.
+
+    Used outside HTTP — the CLI, ingestion, the demo-mode boot path. The
+    telemetry buffer is opened around it for the same reason the middleware
+    opens one per request: an `audit()` call made while this transaction is open
+    must not try to write on a second connection, or SQLite deadlocks against
+    itself.
+    """
+    # Imported here rather than at module scope: the audit log needs this
+    # module's session factory, so a top-level import would be circular.
+    from app.audit.log import telemetry_unit
+
+    async with telemetry_unit(), get_sessionmaker()() as session:
         await apply_principal(session, principal)
         try:
             yield session

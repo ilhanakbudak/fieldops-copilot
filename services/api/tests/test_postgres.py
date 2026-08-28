@@ -196,3 +196,81 @@ async def test_the_expected_indexes_exist(pg: AsyncSession) -> None:
     assert "ix_chunks_embedding_hnsw" in names
     assert "ix_chunks_content_tsv" in names
     assert "ix_chunks_allowed_roles" in names
+
+
+async def test_the_pgvector_store_ranks_and_filters_in_one_query(pg: AsyncSession) -> None:
+    """The pgvector SQL is never executed on the SQLite path, so without this
+    test the production store is code nobody has run."""
+    from app.config import get_settings
+    from app.rag.embed import build_embedding_provider
+    from app.rag.ingest import ingest_document
+    from app.rag.store import PgVectorStore
+
+    settings = get_settings()
+    embedder = build_embedding_provider(settings)
+
+    await apply_principal(pg, _principal(Role.ADMIN))
+    await ingest_document(
+        pg,
+        data=b"# Softener Manual\n\nError code E-04 indicates a stuck brine valve.\n",
+        filename="manual.md",
+        title="Softener Manual",
+        doc_type="manual",
+        allowed_roles=[Role.TECHNICIAN],
+        settings=settings,
+        embedder=embedder,
+    )
+    await ingest_document(
+        pg,
+        data=b"# Dealer Pricing\n\nRadon water system dealer cost is 2400.\n",
+        filename="pricing.md",
+        title="Dealer Pricing",
+        doc_type="pricing",
+        allowed_roles=[Role.SALES],
+        settings=settings,
+        embedder=embedder,
+    )
+
+    store = PgVectorStore(pg)
+    vector = embedder.embed_query("dealer cost of a radon water system")
+
+    await apply_principal(pg, _principal(Role.ADMIN))
+    everything = await store.search(vector, roles=frozenset(Role), limit=10)
+    assert {hit.document_title for hit in everything} == {"Softener Manual", "Dealer Pricing"}
+
+    technician = await store.search(vector, roles=frozenset({Role.TECHNICIAN}), limit=10)
+    assert {hit.document_title for hit in technician} == {"Softener Manual"}
+
+    # Descending similarity, and a real cosine score rather than a distance.
+    assert everything == sorted(everything, key=lambda hit: -hit.score)
+    assert all(-1.0 <= hit.score <= 1.0 for hit in everything)
+
+
+async def test_row_level_security_would_hide_the_chunk_even_without_the_filter(
+    pg: AsyncSession,
+) -> None:
+    """Belt and braces, asserted separately: the store passes a role filter, and
+    the database would refuse the row regardless."""
+    from app.config import get_settings
+    from app.rag.embed import build_embedding_provider
+    from app.rag.ingest import ingest_document
+
+    settings = get_settings()
+    await apply_principal(pg, _principal(Role.ADMIN))
+    await ingest_document(
+        pg,
+        data=b"# Dealer Pricing\n\nRadon water system dealer cost is 2400.\n",
+        filename="pricing.md",
+        title="Dealer Pricing",
+        doc_type="pricing",
+        allowed_roles=[Role.SALES],
+        settings=settings,
+        embedder=build_embedding_provider(settings),
+    )
+
+    # No role filter in this query at all — only the policy stands between the
+    # caller and the row.
+    await apply_principal(pg, _principal(Role.TECHNICIAN))
+    visible = (await pg.execute(text("SELECT count(*) FROM chunks"))).scalar_one()
+
+    assert visible == 0
