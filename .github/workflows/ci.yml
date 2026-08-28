@@ -29,13 +29,56 @@ jobs:
     defaults:
       run:
         working-directory: services/api
+
+    # Row-level security, the generated tsvector column and the HNSW index have
+    # no SQLite equivalent, so they are only ever executed here. Without this
+    # service the security model would be code nobody had run.
+    services:
+      postgres:
+        image: pgvector/pgvector:pg17
+        env:
+          POSTGRES_USER: fieldops
+          POSTGRES_PASSWORD: fieldops
+          POSTGRES_DB: fieldops_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U fieldops"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      # A superuser bypasses row-level security even with FORCE, so the tests
+      # connect as an ordinary role — the same arrangement production uses.
+      TEST_DATABASE_URL: postgresql+asyncpg://fieldops_app:fieldops_app@localhost:5432/fieldops_test
+
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v5
         with:
           enable-cache: true
+
+      - name: Prepare the database the way a Supabase project is prepared
+        env:
+          PGPASSWORD: fieldops
+        run: |
+          psql -h localhost -U fieldops -d fieldops_test <<'SQL'
+            -- Enabled once by an administrator; the migration finds it and
+            -- moves on rather than asking for a privilege it should not have.
+            CREATE EXTENSION IF NOT EXISTS vector;
+            CREATE ROLE fieldops_app LOGIN PASSWORD 'fieldops_app';
+            GRANT ALL ON SCHEMA public TO fieldops_app;
+          SQL
+
       - run: uv sync --all-extras --dev
       - run: uv run ruff check .
       - run: uv run ruff format --check .
       - run: uv run mypy app
       - run: uv run pytest
+
+      # The suite would still be green with every Postgres test skipped, which
+      # is exactly the failure this guards against.
+      - name: Fail if the Postgres tests were skipped
+        run: |
+          uv run pytest tests/test_postgres.py -q | tee postgres.log
+          ! grep -q skipped postgres.log

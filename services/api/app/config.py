@@ -5,22 +5,29 @@ on a user's first question.
 """
 
 from functools import lru_cache
+from pathlib import Path
 from typing import Literal
 
+from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+Environment = Literal["development", "test", "production"]
+
+# Repository-relative default for the credential-free path: services/api/data.
+_DEFAULT_SQLITE_PATH = Path(__file__).resolve().parent.parent / "data" / "fieldops.db"
 
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
-    environment: Literal["development", "test", "production"] = "development"
+    environment: Environment = "development"
 
     # With demo mode on, the service runs against synthetic data and a local
     # vector store, so the repository is runnable with no accounts at all.
     demo_mode: bool = True
 
     # Supabase supplies Postgres + pgvector, auth, storage and row-level
-    # security. Absent, the service falls back to a local sqlite-vec store.
+    # security. Absent, the service falls back to local SQLite.
     supabase_url: str | None = None
     supabase_anon_key: str | None = None
     supabase_service_key: str | None = None
@@ -34,9 +41,78 @@ class Settings(BaseSettings):
     # cost anything, and it keeps the demo credential-free.
     embedding_provider: Literal["local", "openai"] = "local"
 
+    # One dimension for both providers, so the schema does not change when a
+    # deployment switches. The local model (bge-small) is natively 384; OpenAI's
+    # text-embedding-3-small is asked for 384 via its `dimensions` parameter,
+    # which is what its Matryoshka training makes safe. Changing this number
+    # means a migration and a full re-index — it is not a runtime knob.
+    embedding_dim: int = 384
+
+    # --- Sessions ---------------------------------------------------------
+    session_cookie_name: str = "fieldops_session"
+    # Sliding: a session dies this long after its last request.
+    session_idle_minutes: int = Field(default=8 * 60, gt=0)
+    # Hard ceiling regardless of activity, so a stolen cookie has a shelf life.
+    session_absolute_hours: int = Field(default=24 * 14, gt=0)
+
+    # --- Password hashing -------------------------------------------------
+    # OWASP's second recommended Argon2id configuration. Exposed as settings
+    # rather than hard-coded so the cost can be raised as hardware improves —
+    # `needs_rehash` then upgrades each account at its next login — and so the
+    # test suite can run at the floor without the application code having to
+    # know it is under test.
+    argon2_time_cost: int = Field(default=2, gt=0)
+    argon2_memory_kib: int = Field(default=19 * 1024, ge=8)
+    argon2_parallelism: int = Field(default=1, gt=0)
+
+    # --- Login throttle ---------------------------------------------------
+    login_max_attempts: int = Field(default=8, gt=0)
+    login_lockout_minutes: int = Field(default=15, gt=0)
+
+    @property
+    def sqlalchemy_url(self) -> str:
+        """Async driver URL.
+
+        `DATABASE_URL` is accepted in the shape Supabase and Render hand out
+        (`postgresql://…`) and rewritten to the async driver, because pasting the
+        dashboard string and having it fail on a driver prefix is a bad first
+        five minutes.
+        """
+        if not self.database_url:
+            _DEFAULT_SQLITE_PATH.parent.mkdir(parents=True, exist_ok=True)
+            return f"sqlite+aiosqlite:///{_DEFAULT_SQLITE_PATH}"
+
+        url = self.database_url
+        for prefix in ("postgresql+psycopg2://", "postgresql+psycopg://", "postgres://"):
+            if url.startswith(prefix):
+                return "postgresql+asyncpg://" + url[len(prefix) :]
+        if url.startswith("postgresql://"):
+            return "postgresql+asyncpg://" + url[len("postgresql://") :]
+        return url
+
+    @property
+    def is_postgres(self) -> bool:
+        return self.sqlalchemy_url.startswith("postgresql")
+
     @property
     def vector_store(self) -> Literal["pgvector", "sqlite-vec"]:
-        return "pgvector" if self.database_url else "sqlite-vec"
+        return "pgvector" if self.is_postgres else "sqlite-vec"
+
+    @property
+    def cookies_require_https(self) -> bool:
+        return self.environment == "production"
+
+    @model_validator(mode="after")
+    def _production_needs_real_infrastructure(self) -> "Settings":
+        """Demo defaults are a development convenience. Shipping them to
+        production would mean a synthetic corpus and a single-file database on
+        an ephemeral disk, so refuse to start instead."""
+        if self.environment == "production":
+            if self.demo_mode:
+                raise ValueError("DEMO_MODE must be false when ENVIRONMENT=production")
+            if not self.database_url:
+                raise ValueError("DATABASE_URL is required when ENVIRONMENT=production")
+        return self
 
 
 @lru_cache

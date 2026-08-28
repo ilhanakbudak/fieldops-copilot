@@ -2,15 +2,20 @@
   "name": "fieldops-copilot",
   "version": "0.1.0",
   "private": true,
-  "description": "Private AI assistant for service businesses — RAG over internal documents, live CRM lookups, and real-time call assistance.",
+  "description": "Private AI assistant for service businesses \u2014 RAG over internal documents, live CRM lookups, and real-time call assistance.",
   "license": "MIT",
   "author": "Ilhan Akbudak",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/ilhanakbudak/fieldops-copilot.git"
   },
-  "workspaces": ["apps/*", "packages/*"],
-  "engines": { "node": ">=22" },
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
     "dev": "concurrently -n web,api -c cyan,magenta \"npm:dev:web\" \"npm:dev:api\"",
     "dev:web": "npm run dev --workspace apps/web",
@@ -20,9 +25,12 @@
     "lint": "npm run lint --workspaces --if-present",
     "test": "npm run test --workspaces --if-present",
     "api:install": "cd services/api && uv sync",
+    "api:migrate": "cd services/api && uv run python -m app.cli migrate",
+    "api:seed": "cd services/api && uv run python -m app.cli seed",
     "api:lint": "cd services/api && uv run ruff check . && uv run ruff format --check .",
     "api:typecheck": "cd services/api && uv run mypy app",
     "api:test": "cd services/api && uv run pytest -q",
+    "screenshots": "node scripts/screenshot.mjs",
     "verify": "bash scripts/verify.sh"
   },
   "devDependencies": {
