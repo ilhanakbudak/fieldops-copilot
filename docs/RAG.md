@@ -193,6 +193,10 @@ vanishes and the operator is left guessing.
 
 # Querying
 
+> Since milestone 4 the whole of this section runs behind a tool the model may
+> choose to call, rather than on every question. Asked the date, the assistant
+> calls a clock and none of this executes. See [AGENT.md](AGENT.md).
+
 ## 6. Query analysis
 
 Employees do not type search queries. They type *"the E-04 thing again on the

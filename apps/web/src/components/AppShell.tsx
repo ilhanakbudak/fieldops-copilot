@@ -3,10 +3,10 @@
 import { useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import type { Permission } from "@fieldops/shared";
+import { useConversations } from "@/lib/conversations";
 import { useSession } from "@/lib/session";
-import { Button } from "@/components/ui";
 import {
   CallIcon,
   ChatIcon,
@@ -15,9 +15,11 @@ import {
   InventoryIcon,
   LibraryIcon,
   MenuIcon,
+  PlusIcon,
   SearchIcon,
   ShieldIcon,
   SignOutIcon,
+  TrashIcon,
 } from "@/components/icons";
 import styles from "./AppShell.module.css";
 
@@ -41,7 +43,7 @@ const NAVIGATION: Array<{ label: string; items: NavItem[] }> = [
   {
     label: "Operations",
     items: [
-      { href: "/customers", label: "Customers", icon: CustomersIcon, soon: true },
+      { href: "/customers", label: "Customers", icon: CustomersIcon, permission: "customers:read" },
       { href: "/inventory", label: "Inventory", icon: InventoryIcon, soon: true },
       { href: "/call", label: "Live call", icon: CallIcon, permission: "calls:assist", soon: true },
     ],
@@ -63,6 +65,8 @@ function initials(name: string): string {
 export function AppShell({ children }: { children: ReactNode }) {
   const { session, signOut, can } = useSession();
   const pathname = usePathname();
+  const router = useRouter();
+  const history = useConversations();
   const [drawerOpen, setDrawerOpen] = useState(false);
   const closeButton = useRef<HTMLButtonElement>(null);
 
@@ -131,6 +135,70 @@ export function AppShell({ children }: { children: ReactNode }) {
         </div>
 
         <nav className={styles.nav}>
+          {pathname.startsWith("/chat") && (
+            <div className={`${styles.navGroup} ${styles.historyGroup}`}>
+              <button
+                className={styles.newChat}
+                onClick={() => {
+                  history.select(null);
+                  router.push("/chat");
+                }}
+              >
+                <PlusIcon />
+                New conversation
+              </button>
+
+              <div className={styles.historyHead}>
+                <span className={styles.navLabel} style={{ padding: 0 }}>
+                  Recent
+                </span>
+                {history.conversations.length > 0 && (
+                  <button
+                    className={styles.historyClear}
+                    onClick={() => {
+                      if (window.confirm("Delete every conversation? This cannot be undone.")) {
+                        void history.clear();
+                      }
+                    }}
+                  >
+                    Clear all
+                  </button>
+                )}
+              </div>
+
+              {history.conversations.length === 0 ? (
+                <p className={styles.historyEmpty}>
+                  {history.loading ? "Loading…" : "Nothing yet."}
+                </p>
+              ) : (
+                history.conversations.slice(0, 20).map((conversation) => (
+                  <div
+                    key={conversation.id}
+                    className={`${styles.historyItem} ${
+                      conversation.id === history.activeId ? styles.historyItemActive : ""
+                    }`}
+                  >
+                    <button
+                      className={styles.historyLabel}
+                      onClick={() => history.select(conversation.id)}
+                      title={conversation.title}
+                    >
+                      {conversation.title}
+                    </button>
+                    <button
+                      className={styles.historyRemove}
+                      onClick={() => void history.remove(conversation.id)}
+                      aria-label={`Delete “${conversation.title}”`}
+                      title="Delete"
+                    >
+                      <TrashIcon />
+                    </button>
+                  </div>
+                ))
+              )}
+            </div>
+          )}
+
           {NAVIGATION.map((group) => {
             const visible = group.items.filter(
               (item) => !item.permission || can(item.permission),
@@ -192,10 +260,9 @@ export function AppShell({ children }: { children: ReactNode }) {
             <span className={styles.accountName}>{session?.user.fullName}</span>
             <span className={styles.accountRole}>{session?.user.role}</span>
           </span>
-          <Button variant="ghost" size="small" onClick={signOut} aria-label="Sign out">
+          <button className={styles.signOut} onClick={signOut} aria-label="Sign out" title="Sign out">
             <SignOutIcon />
-            <span className={styles.navText}>Sign out</span>
-          </Button>
+          </button>
         </div>
       </aside>
 

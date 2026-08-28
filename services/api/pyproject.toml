@@ -20,6 +20,8 @@ dependencies = [
     "numpy>=2.1",
     "fastembed>=0.7",
     "python-multipart>=0.0.20",
+    "mcp>=1.20",
+    "mcp-server-time>=2026.8",
 ]
 
 [project.optional-dependencies]
@@ -71,3 +73,8 @@ ignore_missing_imports = true
 testpaths = ["tests"]
 asyncio_mode = "auto"
 addopts = "-q"
+markers = [
+    # Spawns the official mcp-server-time subprocess. Runs by default: an MCP
+    # client tested only against a stub has never spoken the protocol.
+    "mcp: launches a real MCP server",
+]

@@ -1,5 +1,7 @@
 import type {
   ApiErrorBody,
+  CustomerRecord,
+  CustomerSummary,
   ConversationDetail,
   ConversationSummary,
   DocumentSummary,
@@ -103,6 +105,13 @@ export const api = {
 
   deleteConversation: (id: string) =>
     request<void>(`/chat/conversations/${id}`, { method: "DELETE" }),
+
+  clearConversations: () => request<void>("/chat/conversations", { method: "DELETE" }),
+
+  findCustomers: (query: string) =>
+    request<CustomerSummary[]>(`/customers?q=${encodeURIComponent(query)}`),
+
+  customer: (id: string) => request<CustomerRecord>(`/customers/${id}`),
 
   search: (query: string, limit = 10) =>
     request<SearchResponse>(

@@ -1,23 +1,25 @@
 """The chat endpoint.
 
-Server-sent events rather than a WebSocket. The traffic is one-directional —
-the question goes up in the POST, the answer comes down — and SSE is a plain
-HTTP response, so it inherits the session cookie, the proxy configuration and
-the audit middleware without any of them being special-cased. A WebSocket would
-need its own authentication path, which is one more place to get authorisation
-wrong. The live-call feature genuinely is bidirectional and will use one; this
-is not.
+Server-sent events rather than a WebSocket. The traffic is one-directional — the
+question goes up in the POST, the answer comes down — and SSE is a plain HTTP
+response, so it inherits the session cookie, the proxy configuration and the
+audit middleware without any of them being special-cased. A WebSocket would need
+its own authentication path, which is one more place to get authorisation wrong.
+The live-call feature genuinely is bidirectional and will use one; this is not.
 
-The event sequence:
+The event sequence, now that a turn can involve tools:
 
-    sources   the passages retrieved, before any text
-    delta     answer text, as it arrives
-    done      resolved citations, token usage and cost
-    error     something failed mid-stream
+    tool       a tool is about to run — the model decided to use it
+    tool_done  what it returned, with its structured payload
+    sources    retrieved passages, when the knowledge tool was one of them
+    delta      answer text, as it arrives
+    done       resolved citations, token usage and cost
+    error      something failed mid-stream
 
-`sources` goes first on purpose. A reader watching an answer form can see what
-it is being drawn from, and when the answer is wrong they can see immediately
-whether retrieval or generation was at fault.
+The tool events are not decoration. A reader watching "Searching the knowledge
+base" appear, then "Found 2 customers", can see *what the assistant decided to
+do* — and when the answer is wrong, whether the decision or the execution was at
+fault.
 """
 
 from __future__ import annotations
@@ -32,6 +34,7 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy import CursorResult, delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.agent import ToolContext, run_agent, tools_for
 from app.api.deps import DbDep, PrincipalDep, SettingsDep, require
 from app.api.schemas import (
     AskRequest,
@@ -49,8 +52,8 @@ from app.core.ids import new_id
 from app.db.engine import session_scope
 from app.db.models import ChatMessage, Conversation
 from app.llm import Message, cost_usd, get_llm_provider
-from app.rag.answer import stream_answer
-from app.rag.search.pipeline import retrieve
+from app.rag.cite import resolve
+from app.rag.search.pipeline import Passage
 
 logger = logging.getLogger("fieldops.chat")
 
@@ -59,7 +62,7 @@ router = APIRouter(prefix="/chat", tags=["chat"])
 # How much of a conversation is replayed to the model. Enough to resolve "what
 # about the other one?", short enough that a long thread does not quietly become
 # the most expensive part of every request.
-HISTORY_TURNS = 6
+HISTORY_TURNS = 8
 
 
 def _sse(event: str, payload: object) -> str:
@@ -99,15 +102,17 @@ async def _generate(
 ) -> AsyncIterator[str]:
     question = body.question.strip()
     llm = get_llm_provider()
+    passages: list[Passage] = []
 
     try:
         async with session_scope(principal) as db:
             conversation = await _conversation(db, principal, body.conversation_id, question)
             conversation_id = conversation.id
+
+            if body.edit_message_id:
+                await _truncate_from(db, conversation_id, body.edit_message_id)
+
             history = await _history(db, conversation_id)
-
-            retrieval = await retrieve(db, question, principal, settings=settings, llm=llm)
-
             db.add(
                 ChatMessage(
                     id=new_id(),
@@ -118,44 +123,74 @@ async def _generate(
                 )
             )
 
-        yield _sse(
-            "sources",
-            {
-                "conversationId": conversation_id,
-                "sources": [
-                    {
-                        "marker": passage.marker,
-                        "documentId": passage.document_id,
-                        "documentTitle": passage.document_title,
-                        "page": passage.page,
-                        "section": passage.section,
-                        "snippet": passage.content[:320],
-                        "score": round(passage.score, 4),
-                        "ranks": passage.ranks,
-                    }
-                    for passage in retrieval.passages
-                ],
-                "retrievalMs": retrieval.duration_ms,
-                "candidates": retrieval.candidates,
-                "reranker": retrieval.reranker,
-                "rewritten": retrieval.analysis.rewritten,
-            },
-        )
+        yield _sse("start", {"conversationId": conversation_id})
 
-        answer = None
-        usage = retrieval.usage
-        async for chunk in stream_answer(question, retrieval, llm, history=history):
-            if chunk.delta:
-                yield _sse("delta", {"text": chunk.delta})
-            if chunk.usage:
-                usage = usage + chunk.usage
-            if chunk.done:
-                answer = chunk.done
+        # One session for the whole turn: tools query the database, and opening
+        # a scope per tool call would mean a new transaction — and on Postgres a
+        # new `SET LOCAL` — for every step.
+        async with session_scope(principal) as db:
+            tools = tools_for(principal)
+            context = ToolContext(principal=principal, session=db)
 
-        if answer is None:  # pragma: no cover - the generator always ends with `done`
-            raise RuntimeError("the answer stream ended without a result")
+            text_parts: list[str] = []
+            usage = None
+            tool_runs: list[dict[str, Any]] = []
 
-        cost = cost_usd(llm.chat_model, usage)
+            async for event in run_agent(
+                question, tools, llm, context, settings=settings, history=history
+            ):
+                if event.tool_started is not None:
+                    yield _sse(
+                        "tool",
+                        {"id": event.tool_started.id, "name": event.tool_started.name},
+                    )
+
+                if event.tool_finished is not None:
+                    run = event.tool_finished
+                    tool_runs.append(
+                        {
+                            "name": run.name,
+                            "summary": run.result.summary,
+                            "ok": run.result.ok,
+                            "durationMs": run.duration_ms,
+                        }
+                    )
+                    yield _sse(
+                        "tool_done",
+                        {
+                            "id": run.id,
+                            "name": run.name,
+                            "summary": run.result.summary,
+                            "ok": run.result.ok,
+                            "durationMs": run.duration_ms,
+                            # Structured payload for the interface — customer
+                            # cards, source lists. The model never sees this.
+                            "data": _public(run.result.data),
+                        },
+                    )
+
+                    found = run.result.data.get("passages")
+                    if found:
+                        passages.extend(cast("list[Passage]", found))
+                        yield _sse("sources", {"sources": [_source(p) for p in found]})
+
+                if event.delta:
+                    text_parts.append(event.delta)
+                    yield _sse("delta", {"text": event.delta})
+
+                if event.done:
+                    usage = event.usage
+
+        answer = resolve("".join(text_parts), passages)
+        if answer.dropped:
+            logger.warning(
+                "model cited %d marker(s) that were never retrieved: %s",
+                len(answer.dropped),
+                ", ".join(sorted(set(answer.dropped))),
+            )
+
+        total = usage or _empty_usage()
+        cost = cost_usd(llm.chat_model, total)
 
         async with session_scope(principal) as db:
             message_id = new_id()
@@ -165,23 +200,9 @@ async def _generate(
                     conversation_id=conversation_id,
                     role="assistant",
                     content=answer.text,
-                    citations=json.dumps(
-                        [
-                            {
-                                "marker": citation.marker,
-                                "chunkId": citation.chunk_id,
-                                "documentId": citation.document_id,
-                                "documentTitle": citation.document_title,
-                                "page": citation.page,
-                                "section": citation.section,
-                                "snippet": citation.snippet,
-                            }
-                            for citation in answer.citations
-                        ]
-                    ),
-                    input_tokens=usage.input_tokens,
-                    output_tokens=usage.output_tokens,
-                    latency_ms=retrieval.duration_ms,
+                    citations=json.dumps([_citation(c) for c in answer.citations]),
+                    input_tokens=total.input_tokens,
+                    output_tokens=total.output_tokens,
                     created_at=utcnow(),
                 )
             )
@@ -191,11 +212,10 @@ async def _generate(
             feature="chat",
             provider=llm.name,
             model=llm.chat_model,
-            input_tokens=usage.input_tokens,
-            output_tokens=usage.output_tokens,
-            cached_input_tokens=usage.cached_input_tokens,
+            input_tokens=total.input_tokens,
+            output_tokens=total.output_tokens,
+            cached_input_tokens=total.cached_input_tokens,
             cost_usd=cost,
-            latency_ms=retrieval.duration_ms,
             principal=principal,
         )
         await audit(
@@ -205,7 +225,8 @@ async def _generate(
             resource_id=conversation_id,
             detail={
                 "question": question[:200],
-                "passages": len(retrieval.passages),
+                "tools": [run["name"] for run in tool_runs],
+                "passages": len(passages),
                 "citations": len(answer.citations),
                 "droppedMarkers": len(answer.dropped),
                 "costUsd": round(cost, 6),
@@ -218,22 +239,12 @@ async def _generate(
                 "conversationId": conversation_id,
                 "messageId": message_id,
                 "text": answer.text,
-                "citations": [
-                    {
-                        "marker": citation.marker,
-                        "chunkId": citation.chunk_id,
-                        "documentId": citation.document_id,
-                        "documentTitle": citation.document_title,
-                        "page": citation.page,
-                        "section": citation.section,
-                        "snippet": citation.snippet,
-                    }
-                    for citation in answer.citations
-                ],
+                "citations": [_citation(c) for c in answer.citations],
+                "tools": tool_runs,
                 "usage": {
-                    "inputTokens": usage.input_tokens,
-                    "outputTokens": usage.output_tokens,
-                    "cachedInputTokens": usage.cached_input_tokens,
+                    "inputTokens": total.input_tokens,
+                    "outputTokens": total.output_tokens,
+                    "cachedInputTokens": total.cached_input_tokens,
                     "estimatedCostUsd": cost,
                 },
             },
@@ -244,6 +255,46 @@ async def _generate(
         # finds out at all.
         logger.exception("chat stream failed")
         yield _sse("error", {"message": "Something went wrong generating this answer."})
+
+
+def _empty_usage() -> Any:
+    from app.llm.base import Usage
+
+    return Usage()
+
+
+def _public(data: dict[str, Any]) -> dict[str, Any]:
+    """Strip anything not JSON-serialisable from a tool's payload.
+
+    `passages` holds dataclasses, which the `sources` event renders separately.
+    Everything else a tool returns is already plain data.
+    """
+    return {key: value for key, value in data.items() if key != "passages"}
+
+
+def _source(passage: Passage) -> dict[str, Any]:
+    return {
+        "marker": passage.marker,
+        "documentId": passage.document_id,
+        "documentTitle": passage.document_title,
+        "page": passage.page,
+        "section": passage.section,
+        "snippet": passage.content[:320],
+        "score": round(passage.score, 4),
+        "ranks": passage.ranks,
+    }
+
+
+def _citation(citation: Any) -> dict[str, Any]:
+    return {
+        "marker": citation.marker,
+        "chunkId": citation.chunk_id,
+        "documentId": citation.document_id,
+        "documentTitle": citation.document_title,
+        "page": citation.page,
+        "section": citation.section,
+        "snippet": citation.snippet,
+    }
 
 
 async def _conversation(
@@ -266,14 +317,36 @@ async def _conversation(
             raise NotFoundError("No such conversation.")
         return existing
 
-    conversation = Conversation(
-        id=new_id(),
-        user_id=principal.user_id,
-        title=question[:120],
-    )
+    conversation = Conversation(id=new_id(), user_id=principal.user_id, title=question[:120])
     db.add(conversation)
     await db.flush()
     return conversation
+
+
+async def _truncate_from(db: AsyncSession, conversation_id: str, message_id: str) -> None:
+    """Editing replaces, rather than branching.
+
+    Everything from the edited message onward is deleted, so the thread has one
+    history and the answer below the edit always corresponds to the question
+    above it. A branching thread is a better research tool and a worse working
+    one.
+    """
+    target = (
+        await db.execute(
+            select(ChatMessage).where(
+                ChatMessage.id == message_id, ChatMessage.conversation_id == conversation_id
+            )
+        )
+    ).scalar_one_or_none()
+    if target is None:
+        raise NotFoundError("No such message.")
+
+    await db.execute(
+        delete(ChatMessage).where(
+            ChatMessage.conversation_id == conversation_id,
+            ChatMessage.created_at >= target.created_at,
+        )
+    )
 
 
 async def _history(db: AsyncSession, conversation_id: str) -> list[Message]:
@@ -288,6 +361,7 @@ async def _history(db: AsyncSession, conversation_id: str) -> list[Message]:
     return [
         Message(role="assistant" if role == "assistant" else "user", content=content)
         for role, content in reversed(rows)
+        if content
     ]
 
 
@@ -306,10 +380,30 @@ async def list_conversations(db: DbDep, principal: PrincipalDep) -> list[Convers
             select(Conversation)
             .where(Conversation.user_id == principal.user_id)
             .order_by(Conversation.updated_at.desc())
-            .limit(50)
+            .limit(100)
         )
     ).scalars()
     return [ConversationSummary.model_validate(row) for row in rows]
+
+
+@router.delete("/conversations", status_code=status.HTTP_204_NO_CONTENT)
+async def clear_conversations(db: DbDep, principal: PrincipalDep) -> None:
+    """Delete every conversation this employee has.
+
+    Their own, and only their own — the audit trail of what was asked survives
+    in `audit_events`, which is a different thing with a different retention
+    story and is not the employee's to clear.
+    """
+    result = cast(
+        "CursorResult[Any]",
+        await db.execute(delete(Conversation).where(Conversation.user_id == principal.user_id)),
+    )
+    await audit(
+        "conversation.clear",
+        resource_type="user",
+        resource_id=principal.user_id,
+        detail={"deleted": int(result.rowcount or 0)},
+    )
 
 
 @router.get("/conversations/{conversation_id}", response_model=ConversationDetail)
@@ -359,7 +453,8 @@ async def delete_conversation(conversation_id: str, db: DbDep, principal: Princi
         "CursorResult[Any]",
         await db.execute(
             delete(Conversation).where(
-                Conversation.id == conversation_id, Conversation.user_id == principal.user_id
+                Conversation.id == conversation_id,
+                Conversation.user_id == principal.user_id,
             )
         ),
     )

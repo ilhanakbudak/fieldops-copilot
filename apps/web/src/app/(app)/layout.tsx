@@ -2,6 +2,7 @@
 
 import type { ReactNode } from "react";
 import { AppShell } from "@/components/AppShell";
+import { ConversationProvider } from "@/lib/conversations";
 import { useRequireSession } from "@/lib/session";
 import { Skeleton } from "@/components/ui";
 
@@ -20,5 +21,9 @@ export default function AppLayout({ children }: { children: ReactNode }) {
     );
   }
 
-  return <AppShell>{children}</AppShell>;
+  return (
+    <ConversationProvider>
+      <AppShell>{children}</AppShell>
+    </ConversationProvider>
+  );
 }

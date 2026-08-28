@@ -1,4 +1,4 @@
-import type { DoneEvent, SourcesEvent } from "@fieldops/shared";
+import type { DoneEvent, SourcesEvent, ToolRun } from "@fieldops/shared";
 
 /**
  * Server-sent events over `fetch`.
@@ -9,6 +9,9 @@ import type { DoneEvent, SourcesEvent } from "@fieldops/shared";
  * this is all of them.
  */
 export type ChatEvent =
+  | { type: "start"; data: { conversationId: string } }
+  | { type: "tool"; data: { id: string; name: string } }
+  | { type: "tool_done"; data: ToolRun }
   | { type: "sources"; data: SourcesEvent }
   | { type: "delta"; data: { text: string } }
   | { type: "done"; data: DoneEvent }
@@ -18,11 +21,13 @@ export async function* askStream(
   question: string,
   conversationId: string | null,
   signal: AbortSignal,
+  /** Set to replace an earlier question: everything from it onward is deleted. */
+  editMessageId?: string | null,
 ): AsyncGenerator<ChatEvent> {
   const response = await fetch("/api/chat", {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ question, conversationId }),
+    body: JSON.stringify({ question, conversationId, editMessageId }),
     signal,
   });
 

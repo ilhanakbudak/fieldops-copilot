@@ -199,14 +199,92 @@ export interface TokenUsage {
   estimatedCostUsd: number;
 }
 
+/** One tool the agent decided to run, and what came back. */
+export interface ToolRun {
+  id: string;
+  name: string;
+  summary: string;
+  ok: boolean;
+  durationMs: number;
+  /** Structured payload for the interface. The model never sees this. */
+  data?: {
+    customers?: CustomerSummary[];
+    customer?: CustomerDetail;
+    query?: string;
+    candidates?: number;
+    retrievalMs?: number;
+    reranker?: string;
+  };
+}
+
+/* --- Customers ------------------------------------------------------------ */
+
+export interface CustomerSummary {
+  id: string;
+  name: string;
+  phone: string;
+  email: string;
+  address: string;
+  since: string;
+  notes?: string;
+}
+
+export interface CustomerEquipment {
+  id: string;
+  model: string;
+  serial: string;
+  installedOn: string;
+  location: string;
+  warrantyUntil: string | null;
+}
+
+export interface CustomerJob {
+  id: string;
+  date: string;
+  kind: string;
+  summary: string;
+  technician: string;
+  notes: string;
+  status: string;
+}
+
+export interface CustomerEstimate {
+  id: string;
+  date: string;
+  summary: string;
+  amountUsd: number;
+  status: string;
+}
+
+export interface CustomerInvoice {
+  id: string;
+  date: string;
+  amountUsd: number;
+  balanceUsd: number;
+  status: string;
+}
+
+export interface CustomerDetail extends CustomerSummary {
+  equipment: CustomerEquipment[];
+  jobs: CustomerJob[];
+  estimates: CustomerEstimate[];
+  invoices: CustomerInvoice[];
+  outstandingUsd: number;
+}
+
+/** The full record, as the customers API returns it. */
+export interface CustomerRecord {
+  customer: CustomerSummary;
+  equipment: CustomerEquipment[];
+  jobs: CustomerJob[];
+  estimates: CustomerEstimate[];
+  invoices: CustomerInvoice[];
+  outstandingUsd: number;
+}
+
 /** The `sources` event: what retrieval found, sent before any answer text. */
 export interface SourcesEvent {
-  conversationId: string;
   sources: RetrievedSource[];
-  retrievalMs: number;
-  candidates: number;
-  reranker: string;
-  rewritten: string;
 }
 
 /** The `done` event: the finished answer, its citations and what it cost. */
@@ -215,6 +293,7 @@ export interface DoneEvent {
   messageId: string;
   text: string;
   citations: Citation[];
+  tools: Array<Pick<ToolRun, "name" | "summary" | "ok" | "durationMs">>;
   usage: TokenUsage;
 }
 

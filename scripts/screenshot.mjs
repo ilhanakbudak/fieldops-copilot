@@ -25,13 +25,14 @@ const CHROME =
  */
 const SHOTS = [
   { name: "sign-in", path: "/sign-in", width: 1280, height: 860, as: null },
-  { name: "chat", path: "/chat", width: 1440, height: 1000, as: "tech@example.com", ask: "What does error code E-04 mean?", expand: true },
-  { name: "chat-declined", path: "/chat", width: 1440, height: 700, as: "sales@example.com", ask: "What does error code E-04 mean?" },
+  { name: "chat", path: "/chat", width: 1440, height: 1000, as: "tech@example.com", ask: "What does error code E-04 mean?" },
+  { name: "chat-agent", path: "/chat", width: 1440, height: 900, as: "office@example.com", ask: "What is today's date?", then: "What did we install for Priya Raman?" },
+  { name: "chat-declined", path: "/chat", width: 1440, height: 640, as: "sales@example.com", ask: "What does error code E-04 mean?" },
+  { name: "customers", path: "/customers", width: 1440, height: 1080, as: "office@example.com", type: "Priya Raman" },
   { name: "knowledge", path: "/knowledge", width: 1440, height: 900, as: "admin@example.com" },
-  { name: "retrieval-technician", path: "/search", width: 1440, height: 980, as: "tech@example.com", search: "What does error code E-04 mean?" },
-  { name: "retrieval-sales", path: "/search", width: 1440, height: 980, as: "sales@example.com", search: "What is the dealer cost of a radon system?" },
-  { name: "chat-tablet", path: "/chat", width: 834, height: 1000, as: "tech@example.com", ask: "Why has the water been warm since the radon system was installed?" },
-  { name: "chat-mobile", path: "/chat", width: 390, height: 800, as: "tech@example.com", ask: "What does error code E-04 mean?" },
+  { name: "retrieval-technician", path: "/search", width: 1440, height: 900, as: "tech@example.com", search: "What does error code E-04 mean?" },
+  { name: "chat-tablet", path: "/chat", width: 834, height: 900, as: "tech@example.com", ask: "What does error code E-04 mean?" },
+  { name: "chat-mobile", path: "/chat", width: 390, height: 780, as: "tech@example.com", ask: "What does error code E-04 mean?" },
 ];
 
 const PASSWORD = "demo-password-1234";
@@ -121,21 +122,37 @@ async function main() {
     await sleep(1600);
 
     if (shot.ask) {
+      const questions = [shot.ask, shot.then].filter(Boolean);
+      for (const question of questions) {
+        await send("Runtime.evaluate", {
+          awaitPromise: true,
+          expression: `(async () => {
+            const field = document.querySelector('textarea[aria-label="Ask a question"]');
+            const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value").set;
+            setter.call(field, ${JSON.stringify(question)});
+            field.dispatchEvent(new Event("input", { bubbles: true }));
+            field.form.requestSubmit();
+            await new Promise((resolve) => setTimeout(resolve, 7000));
+          })()`,
+        });
+        await sleep(600);
+      }
+      await sleep(600);
+    }
+
+    if (shot.type) {
       await send("Runtime.evaluate", {
         awaitPromise: true,
         expression: `(async () => {
-          const input = document.querySelector('input[aria-label="Ask a question"]');
+          const input = document.querySelector('input[aria-label="Search customers"]');
           const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set;
-          setter.call(input, ${JSON.stringify(shot.ask)});
+          setter.call(input, ${JSON.stringify(shot.type)});
           input.dispatchEvent(new Event("input", { bubbles: true }));
           input.form.requestSubmit();
-          // Long enough for retrieval, the stream, and the citation chips.
-          await new Promise((resolve) => setTimeout(resolve, 6000));
-          ${shot.expand ? `document.querySelector("details")?.setAttribute("open", "");` : ""}
-          await new Promise((resolve) => setTimeout(resolve, 400));
+          await new Promise((resolve) => setTimeout(resolve, 2500));
         })()`,
       });
-      await sleep(800);
+      await sleep(600);
     }
 
     if (shot.search) {

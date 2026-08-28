@@ -23,7 +23,7 @@ from typing import Any
 import httpx
 
 from app.config import Settings
-from app.llm.base import Completion, Message, StreamEvent, Usage
+from app.llm.base import Completion, Message, StreamEvent, ToolCall, ToolSpec, Usage
 
 logger = logging.getLogger("fieldops.llm")
 
@@ -41,16 +41,39 @@ class OpenAiProvider:
         self.cheap_model = settings.cheap_model
         self._timeout = httpx.Timeout(60.0, connect=10.0)
 
-    def _payload(self, messages: list[Message], model: str, max_tokens: int) -> dict[str, object]:
-        return {
+    def _payload(
+        self,
+        messages: list[Message],
+        model: str,
+        max_tokens: int,
+        tools: list[ToolSpec] | None = None,
+    ) -> dict[str, Any]:
+        payload: dict[str, Any] = {
             "model": model,
-            "messages": [{"role": m.role, "content": m.content} for m in messages],
+            "messages": [_wire(message) for message in messages],
             "max_completion_tokens": max_tokens,
             # Retrieval-grounded answers should not be inventive. The interesting
             # variation belongs in which passages were retrieved, not in how the
             # model chose to phrase a warranty term.
             "temperature": 0.2,
         }
+        if tools:
+            payload["tools"] = [
+                {
+                    "type": "function",
+                    "function": {
+                        "name": tool.name,
+                        "description": tool.description,
+                        "parameters": tool.parameters,
+                    },
+                }
+                for tool in tools
+            ]
+            # "auto", not "required". The whole point of the agent loop is that
+            # the model may answer directly — asked the date, it should not be
+            # forced to search a corpus of water-treatment manuals for it.
+            payload["tool_choice"] = "auto"
+        return payload
 
     async def complete(
         self, messages: list[Message], *, model: str | None = None, max_tokens: int = 512
@@ -70,9 +93,14 @@ class OpenAiProvider:
         )
 
     async def stream(
-        self, messages: list[Message], *, model: str | None = None, max_tokens: int = 1024
+        self,
+        messages: list[Message],
+        *,
+        model: str | None = None,
+        max_tokens: int = 1024,
+        tools: list[ToolSpec] | None = None,
     ) -> AsyncIterator[StreamEvent]:
-        payload = self._payload(messages, model or self.chat_model, max_tokens)
+        payload = self._payload(messages, model or self.chat_model, max_tokens, tools)
         payload["stream"] = True
         # Without this the streamed response carries no token counts at all, and
         # every streamed answer costs an unknown amount.
@@ -111,6 +139,56 @@ class OpenAiProvider:
                     delta = choices[0].get("delta", {}).get("content")
                     if delta:
                         yield StreamEvent(delta=delta)
+
+
+def _wire(message: Message) -> dict[str, Any]:
+    """One message in the shape the API expects."""
+    payload: dict[str, Any] = {"role": message.role, "content": message.content}
+
+    if message.role == "tool":
+        payload["tool_call_id"] = message.tool_call_id
+        if message.name:
+            payload["name"] = message.name
+    elif message.tool_calls:
+        payload["tool_calls"] = [
+            {
+                "id": call.id,
+                "type": "function",
+                "function": {"name": call.name, "arguments": json.dumps(call.arguments)},
+            }
+            for call in message.tool_calls
+        ]
+        # A tool-calling assistant message has no text, and the API rejects an
+        # empty string where it expects null.
+        payload["content"] = message.content or None
+
+    return payload
+
+
+def _assemble(pending: dict[int, dict[str, str]]) -> tuple[ToolCall, ...]:
+    """Turn accumulated fragments into whole calls.
+
+    Arguments that do not parse are dropped rather than guessed at. A model that
+    emitted broken JSON has not asked for anything actionable, and inventing an
+    argument object on its behalf is how an agent ends up calling the right tool
+    with the wrong customer.
+    """
+    calls: list[ToolCall] = []
+    for index in sorted(pending):
+        slot = pending[index]
+        if not slot["name"]:
+            continue
+        try:
+            arguments = json.loads(slot["arguments"] or "{}")
+        except json.JSONDecodeError:
+            logger.warning("dropping tool call %s with unparseable arguments", slot["name"])
+            continue
+        if not isinstance(arguments, dict):
+            continue
+        calls.append(
+            ToolCall(id=slot["id"] or f"call_{index}", name=slot["name"], arguments=arguments)
+        )
+    return tuple(calls)
 
 
 def _usage(raw: Any) -> Usage:

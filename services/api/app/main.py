@@ -15,8 +15,9 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from sqlalchemy import func, select
 
+from app.agent import mcp_registry
 from app.api.middleware import RequestContextMiddleware
-from app.api.routes import admin, auth, chat, documents
+from app.api.routes import admin, auth, chat, customers, documents
 from app.api.schemas import HealthResponse
 from app.config import Settings, get_settings
 from app.core.errors import install_error_handlers
@@ -66,7 +67,13 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
         # thirty-second pause is indistinguishable from a hang.
         await asyncio.to_thread(_warm_reranker)
 
+    # Tool servers start whatever the mode: an assistant that can tell the time
+    # should not need demo data to do it. A server that will not start costs its
+    # tools and nothing else — see app/agent/mcp.py.
+    await mcp_registry().start(settings)
+
     yield
+    await mcp_registry().stop()
     await dispose_engine()
 
 
@@ -84,6 +91,7 @@ app.include_router(auth.router)
 app.include_router(admin.router)
 app.include_router(documents.router)
 app.include_router(chat.router)
+app.include_router(customers.router)
 
 
 @app.get("/health", response_model=HealthResponse, tags=["system"])

@@ -3,9 +3,17 @@
 **This is extractive, not generative.** It does not paraphrase, infer or
 summarise: it selects the sentences from the retrieved passages that best match
 the question, and attaches the citation markers for the passages it took them
-from. What it demonstrates is the *pipeline* — retrieval, role filtering,
-citation resolution, streaming, cost accounting — with a stand-in where the
-model would be.
+from. What it demonstrates is the *pipeline* — tool routing, retrieval, role
+filtering, citation resolution, streaming, cost accounting — with a stand-in
+where the model would be.
+
+**It routes tools by rule.** Given a toolset it picks one by matching the
+question against each tool's keywords, which is a crude imitation of what a real
+model does with a tool description. Crude, and enough to demonstrate the thing
+that matters: asked the date it calls the clock, asked about a fault code it
+searches the manuals, and asked who a customer is it queries the CRM. The
+routing is deliberately visible in `_route` rather than hidden, because a
+reviewer should be able to see exactly how much of this is real.
 
 That distinction is worth being blunt about in a public repository, because the
 alternative is a reviewer running the demo, seeing fluent prose, and believing
@@ -24,12 +32,14 @@ import json
 import re
 from collections.abc import AsyncIterator
 
-from app.llm.base import Completion, Message, StreamEvent, Usage
+from app.llm.base import Completion, Message, StreamEvent, ToolCall, ToolSpec, Usage
 
 _SENTENCE = re.compile(r"(?<=[.!?])\s+(?=[A-Z(\[])")
 _WORD = re.compile(r"[a-z0-9][a-z0-9\-/.]*")
 _MARKER = re.compile(r"\[S(\d+)\]")
 _CODE_LIKE = re.compile(r"^[a-z]{1,4}-\d{2,4}$")
+_PERSON = re.compile(r"\b[A-Z][a-z]{2,}\s+[A-Z][a-z]{2,}\b")
+_ACCOUNT = re.compile(r"\bNG-\d{3,6}\b")
 
 # Words that appear in every question and discriminate between nothing.
 _STOP = frozenset(
@@ -83,7 +93,7 @@ _STOP = frozenset(
     ]
 )
 
-# The passages arrive in the prompt under these markers; the answer has to carry
+# Passages arrive in a tool result under these markers; the answer has to carry
 # them back so the API can resolve them to real documents.
 _SOURCE_BLOCK = re.compile(r"\[S(\d+)\][^\n]*\n(.*?)(?=\n\[S\d+\]|\Z)", re.DOTALL)
 
@@ -106,8 +116,20 @@ class MockLlmProvider:
         return Completion(text=_answer(messages), usage=_usage(messages, 80))
 
     async def stream(
-        self, messages: list[Message], *, model: str | None = None, max_tokens: int = 1024
+        self,
+        messages: list[Message],
+        *,
+        model: str | None = None,
+        max_tokens: int = 1024,
+        tools: list[ToolSpec] | None = None,
     ) -> AsyncIterator[StreamEvent]:
+        if tools:
+            call = _route(messages, tools)
+            if call is not None:
+                yield StreamEvent(tool_calls=(call,))
+                yield StreamEvent(usage=_usage(messages, 0))
+                return
+
         text = _answer(messages)
         # Word by word, so the client's streaming path is exercised rather than
         # handed one large chunk that hides a broken renderer.
@@ -135,6 +157,113 @@ def _clean(sentence: str) -> str:
     sentence = re.sub(r"\*\*(.+?)\*\*", r"\1", sentence)
     sentence = re.sub(r"`(.+?)`", r"\1", sentence)
     return sentence.strip()
+
+
+# Which words send a question to which tool. A real model reads the tool's
+# description; this reads a keyword list. Both are guesses — the difference is
+# that a model's guess generalises and this one does not, which is the honest
+# limit of a stand-in.
+_ROUTES: list[tuple[str, frozenset[str]]] = [
+    (
+        "get_current_time",
+        frozenset({"time", "date", "today", "now", "day", "clock", "timezone"}),
+    ),
+    (
+        "find_customer",
+        frozenset({"customer", "pull", "account", "client", "phone", "address", "who"}),
+    ),
+    (
+        "get_customer_detail",
+        frozenset({"history", "jobs", "installed", "equipment", "estimate", "invoice", "balance"}),
+    ),
+]
+
+
+def _route(messages: list[Message], tools: list[ToolSpec]) -> ToolCall | None:
+    """Pick a tool, or none at all.
+
+    Returning `None` is the interesting branch: it means "answer from what you
+    already have", which after a tool has run is usually what should happen. A
+    stand-in that always called a tool would loop forever.
+    """
+    available = {tool.name for tool in tools}
+    results = [message for message in messages if message.role == "tool"]
+
+    if results:
+        # One chain, so the loop is demonstrably a loop rather than a single
+        # dispatch: a customer search that returned exactly one account is
+        # followed by pulling that account's record, which is what the model
+        # does with "pull up X and tell me what we installed".
+        follow_up = _chain(results[-1].content, available)
+        return follow_up
+
+    question = next(
+        (message.content for message in reversed(messages) if message.role == "user"), ""
+    )
+    words = _tokens(question)
+
+    # A two-word proper noun is almost always a person, and a question naming a
+    # person is a question about a customer. Checked before the keyword routes
+    # because "what did we install for John Smith" contains no CRM keyword at
+    # all — a real model reads the tool descriptions and gets this for free.
+    if "find_customer" in available and _PERSON.search(question):
+        return ToolCall(
+            id="call_find_customer",
+            name="find_customer",
+            arguments=_arguments("find_customer", question),
+        )
+
+    for suffix, triggers in _ROUTES:
+        # Suffix, not equality: an MCP tool arrives namespaced by its server, so
+        # the clock is `mcp_time_get_current_time` rather than
+        # `get_current_time`. A real model reads the description and does not
+        # care what the tool is called.
+        match = next((name for name in available if name.endswith(suffix)), None)
+        if match and words & triggers:
+            return ToolCall(id=f"call_{suffix}", name=match, arguments=_arguments(suffix, question))
+
+    if "search_knowledge_base" in available:
+        return ToolCall(
+            id="call_search",
+            name="search_knowledge_base",
+            arguments={"query": question},
+        )
+    return None
+
+
+def _chain(previous: str, available: set[str]) -> ToolCall | None:
+    """The second step, when the first produced exactly one account."""
+    if "get_customer_detail" not in available or "More than one" in previous:
+        return None
+
+    accounts = _ACCOUNT.findall(previous)
+    if len(accounts) != 1:
+        return None
+
+    return ToolCall(
+        id="call_get_customer_detail",
+        name="get_customer_detail",
+        arguments={"customer_id": accounts[0]},
+    )
+
+
+def _arguments(name: str, question: str) -> dict[str, object]:
+    if name == "get_current_time":
+        # A real model reads the business timezone out of the system prompt and
+        # fills it in. This reads it from the same setting, so the demo answers
+        # in the same timezone the deployment is configured for.
+        from app.config import get_settings
+
+        return {"timezone": get_settings().business_timezone}
+    if name in {"find_customer", "get_customer_detail"}:
+        # Everything that looks like a proper noun. Crude, and it recovers
+        # "John Smith" out of "pull up John Smith in Portland", which is the
+        # case worth demonstrating.
+        names = re.findall(r"\b[A-Z][a-z]{2,}\b", question)
+        skip = {"Pull", "What", "Tell", "Show", "Find", "Who", "When", "Where", "Does", "Did"}
+        query = " ".join(word for word in names if word not in skip)
+        return {"query": query or question}
+    return {"query": question}
 
 
 def _tokens(text: str) -> set[str]:
@@ -177,13 +306,28 @@ def _analyse(prompt: str) -> str:
 
 
 def _answer(messages: list[Message]) -> str:
-    """Select the sentences that best match the question, with their markers."""
-    system = messages[0].content if messages else ""
-    question = messages[-1].content if messages else ""
+    """Select the sentences that best match the question, with their markers.
+
+    Reads the *tool results*, not the system prompt. An earlier version scanned
+    the system message for marker blocks, which worked until the prompt itself
+    grew an example citation — and then every answer was an extract from the
+    instructions. Tool output is the only place passages legitimately appear.
+    """
+    question = next(
+        (message.content for message in reversed(messages) if message.role == "user"), ""
+    )
+    results = [message.content for message in messages if message.role == "tool"]
+    if not results:
+        return (
+            "I do not have anything to answer that from. Try asking about the "
+            "company's documents, or about a customer."
+        )
+
+    transcript = "\n\n".join(results)
     wanted = _tokens(question)
 
     scored: list[tuple[float, int, str]] = []
-    for match in _SOURCE_BLOCK.finditer(system):
+    for match in _SOURCE_BLOCK.finditer(transcript):
         index = int(match.group(1))
         # Heading lines are dropped before splitting. A heading has no sentence
         # terminator, so it would otherwise be glued to the sentence beneath it
@@ -206,10 +350,22 @@ def _answer(messages: list[Message]) -> str:
             scored.append((score, index, sentence))
 
     if not scored:
-        return (
-            "I could not find anything in the documents you have access to that "
-            "answers this. It may be in a document written for another role."
-        )
+        # Two different situations, and collapsing them would be the same
+        # mistake the relevance floor exists to prevent.
+        if _SOURCE_BLOCK.search(transcript):
+            # Passages came back and none of them address the question — which
+            # is what a role boundary looks like from the inside.
+            return (
+                "I could not find anything in the documents you have access to that "
+                "answers this. It may be in a document written for another role."
+            )
+        # No marked passages at all: the tool that ran was not the knowledge
+        # base — a clock, or a customer lookup. Its output is the answer.
+        #
+        # The *last* result, not the whole transcript: a chained lookup produces
+        # a search result and then the record it led to, and relaying both makes
+        # the answer repeat itself.
+        return _relay(results[-1])
 
     scored.sort(key=lambda row: -row[0])
     chosen = scored[:3]
@@ -220,6 +376,34 @@ def _answer(messages: list[Message]) -> str:
 
     parts = [f"{sentence} [S{index}]" for _score, index, sentence in chosen]
     return " ".join(parts)
+
+
+def _relay(output: str) -> str:
+    """Pass a non-knowledge tool's output through.
+
+    A real model would write a sentence around this. A stand-in that tried to
+    would be inventing prose, which is the one thing this provider exists not to
+    do — so it relays, and the README says why.
+
+    Formatting is not paraphrasing: a JSON result is fenced so the interface
+    renders it as a code block rather than as a sentence that happens to contain
+    braces. What it says is untouched.
+    """
+    text = output.strip()
+    if not text:
+        return "The tool returned nothing."
+
+    if text.startswith("{") or text.startswith("["):
+        try:
+            json.loads(text)
+        except json.JSONDecodeError:
+            pass
+        else:
+            return f"```json\n{text}\n```"
+
+    if len(text) > 1200:
+        text = text[:1200].rsplit("\n", 1)[0] + "\n…"
+    return text
 
 
 def _usage(messages: list[Message], output_words: int) -> Usage:

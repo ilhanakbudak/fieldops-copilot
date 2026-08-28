@@ -113,3 +113,36 @@ export function SignOutIcon(props: SVGProps<SVGSVGElement>) {
     </svg>
   );
 }
+
+export function PlusIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg {...base} width="16" height="16" {...props}>
+      <path d="M12 5v14M5 12h14" />
+    </svg>
+  );
+}
+
+export function TrashIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg {...base} width="14" height="14" {...props}>
+      <path d="M4 7h16M10 7V5h4v2M6 7l1 13h10l1-13" />
+    </svg>
+  );
+}
+
+export function PencilIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg {...base} width="14" height="14" {...props}>
+      <path d="M4 20h4L20 8l-4-4L4 16z" />
+    </svg>
+  );
+}
+
+export function CopyIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg {...base} width="14" height="14" {...props}>
+      <rect x="9" y="9" width="11" height="11" rx="2" />
+      <path d="M5 15V6a1 1 0 0 1 1-1h9" />
+    </svg>
+  );
+}

@@ -47,6 +47,34 @@ class Settings(BaseSettings):
     chat_model: str = "gpt-5.6-terra"
     cheap_model: str = "gpt-5.6-luna"
 
+    # --- Connectors ---------------------------------------------------------
+    # The mock is a synthetic water-treatment business, so the CRM tools work on
+    # a fresh clone. Service Fusion issues credentials to its customers, not to
+    # a public repository — see app/connectors/service_fusion.py.
+    crm_provider: Literal["mock", "service_fusion"] = "mock"
+    service_fusion_client_id: str | None = None
+    service_fusion_client_secret: str | None = None
+
+    # --- Agent --------------------------------------------------------------
+    # Where "today" is. An assistant asked for the date has to answer in the
+    # business's timezone, not the server's — a container in another region
+    # would otherwise be a day ahead for half of every evening. Stated in the
+    # system prompt so the model can fill it into a tool call.
+    business_timezone: str = "America/New_York"
+
+    # How many times the model may call tools before it must answer. Four is
+    # room for a lookup, a follow-up and a correction; it is also a ceiling on
+    # what one question can cost when a model gets into a loop.
+    agent_max_steps: int = Field(default=4, ge=1, le=10)
+
+    # MCP servers, as JSON: [{"name": …, "command": …, "args": [...]}].
+    #
+    # The default is `mcp-server-time`, one of the official reference servers,
+    # installed as a dependency and launched as a subprocess. It is what answers
+    # "what is the date" — a tool this repository did not write, reached over
+    # the protocol rather than through a bespoke integration.
+    mcp_servers: str = '[{"name": "time", "command": "python", "args": ["-m", "mcp_server_time"]}]'
+
     # --- Retrieval ----------------------------------------------------------
     # Candidates fetched from each leg of the hybrid search before fusion.
     # Generous, because rank fusion can only reorder what it was given.

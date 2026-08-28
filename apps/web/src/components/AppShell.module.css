@@ -136,6 +136,129 @@
   white-space: nowrap;
 }
 
+/* --- Conversation history -------------------------------------------------
+   Inside the one sidebar rather than in a second column of its own. Two lists
+   of links side by side makes the reader work out which is the application and
+   which is the page. */
+
+.historyHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: 0 var(--space-3) var(--space-2);
+}
+
+.historyClear {
+  border: 0;
+  background: transparent;
+  padding: 2px 4px;
+  border-radius: var(--radius-sm);
+  color: var(--text-tertiary);
+  font-size: var(--text-xs);
+  cursor: pointer;
+}
+
+.historyClear:hover {
+  background: var(--surface-hover);
+  color: var(--danger-700);
+}
+
+.historyItem {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 32px;
+  padding: 0 var(--space-2) 0 var(--space-3);
+  border-radius: var(--radius);
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+  transition: background var(--transition), color var(--transition);
+}
+
+.historyItem:hover {
+  background: var(--surface-hover);
+  color: var(--text);
+}
+
+.historyItemActive {
+  background: var(--accent-50);
+  color: var(--accent-700);
+  font-weight: 500;
+}
+
+.historyLabel {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  padding: var(--space-1) 0;
+  text-align: left;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+/* Revealed on hover or focus. Always-visible delete buttons on every row make
+   a list look like a control panel; hidden ones that never appear for keyboard
+   users are worse. */
+.historyRemove {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity var(--transition), background var(--transition);
+}
+
+.historyItem:hover .historyRemove,
+.historyRemove:focus-visible {
+  opacity: 1;
+}
+
+.historyRemove:hover {
+  background: var(--danger-50);
+  color: var(--danger-700);
+}
+
+.historyEmpty {
+  padding: var(--space-1) var(--space-3);
+  font-size: var(--text-xs);
+  color: var(--text-tertiary);
+}
+
+.newChat {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  min-height: 34px;
+  margin-bottom: var(--space-3);
+  padding: 0 var(--space-3);
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-xs);
+  color: var(--text);
+  font-size: var(--text-sm);
+  font-weight: 500;
+  cursor: pointer;
+  transition: background var(--transition);
+}
+
+.newChat:hover {
+  background: var(--surface-hover);
+}
+
 .navSoon {
   margin-left: auto;
   font-size: var(--text-xs);
@@ -149,7 +272,8 @@
   pointer-events: none;
 }
 
-/* --- Account footer ------------------------------------------------------- */
+/* --- Account footer -------------------------------------------------------
+   One row: who you are, and how to stop being them. */
 
 .account {
   display: flex;
@@ -157,6 +281,25 @@
   gap: var(--space-3);
   padding: var(--space-3) var(--space-4);
   border-top: 1px solid var(--border);
+}
+
+.signOut {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border: 0;
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  transition: background var(--transition), color var(--transition);
+}
+
+.signOut:hover {
+  background: var(--surface-hover);
+  color: var(--text);
 }
 
 .avatar {
@@ -302,7 +445,8 @@
   .brandName,
   .accountText,
   .navText,
-  .navSoon {
+  .navSoon,
+  .historyGroup {
     display: none;
   }
 
@@ -372,6 +516,10 @@
 
   .accountText {
     display: grid;
+  }
+
+  .historyGroup {
+    display: block;
   }
 
   .navLabel {

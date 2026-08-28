@@ -47,25 +47,67 @@ async def ask(client: AsyncClient, question: str, conversation_id: str | None = 
     return {
         "order": [kind for kind, _ in events],
         "sources": next((p for k, p in events if k == "sources"), None),
+        "tools": [p for k, p in events if k == "tool_done"],
         "done": next((p for k, p in events if k == "done"), None),
         "error": next((p for k, p in events if k == "error"), None),
         "text": text,
     }
 
 
-async def test_sources_arrive_before_any_text(client: AsyncClient) -> None:
-    """So a reader watching an answer form can see what it is being drawn from —
-    and, when the answer is wrong, whether retrieval or generation was at
-    fault."""
+async def test_the_tool_it_chose_is_reported_before_any_text(client: AsyncClient) -> None:
+    """A reader can see what the assistant decided to do, and when the answer is
+    wrong, whether the decision or the execution was at fault."""
     await _seed(client)
     await login(client, "technician")
 
     result = await ask(client, "What does error code E-04 mean?")
 
     assert result["error"] is None
-    assert result["order"][0] == "sources"
+    assert result["order"][0] == "start"
     assert result["order"][-1] == "done"
+    assert result["order"].index("tool") < result["order"].index("delta")
     assert result["order"].index("sources") < result["order"].index("delta")
+    assert [tool["name"] for tool in result["tools"]] == ["search_knowledge_base"]
+
+
+async def test_a_question_a_tool_cannot_help_with_does_not_search_the_corpus(
+    client: AsyncClient,
+) -> None:
+    """The whole point of routing: asked the date, the assistant looks at a
+    clock rather than searching a corpus of water-treatment manuals for a
+    calendar."""
+    await _seed(client)
+    await login(client, "technician")
+
+    result = await ask(client, "What is today's date?")
+
+    used = [tool["name"] for tool in result["tools"]]
+    assert "search_knowledge_base" not in used
+    assert result["sources"] is None
+
+
+async def test_a_customer_question_reaches_the_crm_and_chains(
+    client: AsyncClient,
+) -> None:
+    """Two steps: find the account, then read it. The loop is a loop."""
+    await _seed(client)
+    await login(client, "office")
+
+    result = await ask(client, "What did we install for Priya Raman?")
+
+    used = [tool["name"] for tool in result["tools"]]
+    assert used == ["find_customer", "get_customer_detail"]
+    assert "NG-IR Iron Filter" in result["text"]
+
+
+async def test_an_ambiguous_customer_is_not_guessed_at(client: AsyncClient) -> None:
+    await _seed(client)
+    await login(client, "office")
+
+    result = await ask(client, "Pull up John Smith")
+
+    assert [tool["name"] for tool in result["tools"]] == ["find_customer"]
+    assert "more than one" in result["text"].lower()
 
 
 async def test_an_answer_cites_documents_that_were_actually_retrieved(
@@ -82,6 +124,65 @@ async def test_an_answer_cites_documents_that_were_actually_retrieved(
     assert citations
     assert all(citation["documentTitle"] in retrieved for citation in citations)
     assert all(citation["chunkId"] for citation in citations)
+
+
+async def test_editing_a_question_replaces_it_rather_than_branching(
+    client: AsyncClient,
+) -> None:
+    """One history, so the answer below an edit always corresponds to the
+    question above it."""
+    await _seed(client)
+    await login(client, "technician")
+
+    first = await ask(client, "What does error code E-14 mean?")
+    conversation_id = first["done"]["conversationId"]
+
+    detail = (await client.get(f"/chat/conversations/{conversation_id}")).json()
+    question_id = detail["messages"][0]["id"]
+
+    async with client.stream(
+        "POST",
+        "/chat",
+        json={
+            "question": "What does error code E-04 mean?",
+            "conversationId": conversation_id,
+            "editMessageId": question_id,
+        },
+    ) as response:
+        async for _line in response.aiter_lines():
+            pass
+
+    after = (await client.get(f"/chat/conversations/{conversation_id}")).json()
+    assert [message["content"] for message in after["messages"] if message["role"] == "user"] == [
+        "What does error code E-04 mean?"
+    ]
+    assert len(after["messages"]) == 2
+
+
+async def test_clearing_history_removes_every_conversation(client: AsyncClient) -> None:
+    await _seed(client)
+    await login(client, "technician")
+    await ask(client, "What does error code E-04 mean?")
+    await ask(client, "What is E-14?")
+
+    assert len((await client.get("/chat/conversations")).json()) >= 1
+    assert (await client.delete("/chat/conversations")).status_code == 204
+    assert (await client.get("/chat/conversations")).json() == []
+
+
+async def test_clearing_history_leaves_another_employee_untouched(
+    client: AsyncClient,
+) -> None:
+    await _seed(client)
+    await login(client, "technician")
+    await ask(client, "What does error code E-04 mean?")
+
+    await login(client, "office")
+    await ask(client, "What is today's date?")
+    await client.delete("/chat/conversations")
+
+    await login(client, "technician")
+    assert len((await client.get("/chat/conversations")).json()) == 1
 
 
 async def test_the_stream_reports_what_the_answer_cost(client: AsyncClient) -> None:

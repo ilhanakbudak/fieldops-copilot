@@ -14,9 +14,9 @@
   <img alt="License" src="https://img.shields.io/badge/license-MIT-blue">
 </p>
 
-> **🚧 In progress.** Sign in, upload a manual, and ask questions of it — that
-> works today, with cited answers and role filtering enforced in the query and
-> in the database. The connectors and live call assist land milestone by
+> **🚧 In progress.** Sign in, upload a manual, ask questions of it, and pull a
+> customer up — that works today, with an agent that decides which of those a
+> question actually needs. Inventory and live call assist land milestone by
 > milestone; see [Status](#status).
 
 ---
@@ -54,27 +54,46 @@ all needing a specific fact from a document nobody can find:
 ## What it does today
 
 <p align="center">
-  <img alt="An employee asking what error code E-04 means, and getting a cited answer with the retrieval detail expanded" src="docs/assets/chat.png" width="880">
+  <img alt="An employee asking what error code E-04 means, and getting a cited answer" src="docs/assets/chat.png" width="880">
 </p>
 
 Ask a question, get an answer with a citation on every claim. Each `[S1]` is a
 chip: click it and the passage it came from opens underneath, with the document,
 section and page.
 
-The panel at the bottom is the part I would want to see in someone else's
-repository. It shows every passage retrieved — not just the cited ones — and
-where each leg of the hybrid search ranked it: `v2 k2` means second on vector
-and second on keyword, `k—` means the keyword leg missed it entirely. When an
-answer is wrong, that line is the difference between *retrieval found the wrong
-passage* and *retrieval was fine and generation ignored it*. Those look identical
-from a chat window and have nothing in common as fixes.
+**It decides what to do.** This is not a chat window bolted to a search index:
+
+<p align="center">
+  <img alt="Asked the date, the assistant calls an MCP time server; asked about a customer, it searches the CRM and then reads the record" src="docs/assets/chat-agent.png" width="880">
+</p>
+
+Asked the date, it calls a clock and the retrieval pipeline never runs — and the
+clock is **not a tool I wrote**. It is
+[`mcp-server-time`](https://github.com/modelcontextprotocol/servers), one of the
+official Model Context Protocol reference servers, running as a subprocess and
+discovered over MCP. Adding another integration is a line of configuration
+rather than a module.
+
+Asked what was installed for a customer, it searches the CRM, gets one match,
+and *chains* into reading that record. The trail above the answer is that
+decision made visible: when an answer is wrong, it separates a bad decision from
+a bad execution.
 
 **The same question, asked by someone who may not read the answer:**
 
 <p align="center">
   <img alt="A salesperson asking the same question and being told the answer is not in the documents they can read" src="docs/assets/chat-declined.png" width="880">
   <br><em>Sales cannot read service manuals. Not filtered out of the answer —
-  those passages never entered the candidate set.</em>
+  those passages never entered the candidate set. The tools are gated the same
+  way: a technician's model is never told a pricing lookup exists.</em>
+</p>
+
+**Customer records, read-only by construction:**
+
+<p align="center">
+  <img alt="A customer record showing installed equipment, service history with the technician's notes, and invoices" src="docs/assets/customers.png" width="880">
+  <br><em>The technician's notes get the emphasis. They are the most useful
+  thing in a service record and the hardest thing to find in most CRMs.</em>
 </p>
 
 Documents are tagged with the roles they are written for. That tag is not a label
@@ -116,6 +135,26 @@ flowchart LR
     CONN -.-> TEL["RingCentral"]
     TEL -.->|"live transcript"| API
 ```
+
+### The agent
+
+Retrieval is a tool the model may call, not what the endpoint does. Four
+constraints on the loop, each because the obvious version fails:
+
+- **Tools are role-gated, like documents.** Built per request from the caller's
+  principal. Stronger than refusing a call — a tool the model cannot see is one
+  it cannot be talked into using.
+- **A step ceiling**, and on the final step the tools are *withdrawn* rather
+  than the loop stopping, so the model has to answer with what it has.
+- **Tools in one step run concurrently.** Two lookups cost the slower, not the
+  sum.
+- **A failing tool is a result, not an exception.** "The CRM did not answer"
+  reaches the model, which can say so. And it must never look like an empty
+  answer: *no customer found* and *the lookup failed* lead to completely
+  different next actions.
+
+Full reasoning, including why an MCP server is worth it for a clock, in
+[**docs/AGENT.md**](docs/AGENT.md).
 
 ### How a document becomes an answer
 
@@ -231,6 +270,7 @@ precisely the thing pgvector's HNSW replaces once the corpus is real.
 | Auth | Server-side sessions, Argon2id, RBAC enforced in the retrieval query |
 | Ingestion | pdfplumber (MIT) · PyMuPDF and PaddleOCR as optional extras |
 | Embeddings | Local ONNX by default; OpenAI `text-embedding-3-small` in production — both at 384 dimensions, so the schema does not change when a deployment switches |
+| Agent | Tool-calling loop, role-gated toolset, MCP client over stdio |
 | Retrieval | Hybrid vector + FTS, reciprocal rank fusion, local cross-encoder rerank |
 | Generation | OpenAI, behind a provider abstraction — with an extractive mock so the repository runs with no key |
 | Realtime | WebSocket — transcript in, suggestions out |
@@ -278,13 +318,13 @@ npm run screenshots         # regenerate the images above from a running instanc
 npm run eval                # score retrieval; --compare ablates each stage
 ```
 
-Answers in demo mode come from an **extractive stand-in**, not a language model:
-it selects the sentences from the retrieved passages that best match the
-question and attaches their citation markers. That is stated plainly because the
-alternative is a reviewer seeing fluent prose and believing otherwise. What it
-demonstrates is the pipeline — retrieval, role filtering, citation resolution,
+Answers in demo mode come from an **extractive stand-in**, not a language model.
+It routes tools by keyword and selects sentences from what they return, rather
+than paraphrasing. That is stated plainly because the alternative is a reviewer
+seeing fluent prose and believing otherwise. What it demonstrates is the
+machinery — tool routing, retrieval, role filtering, citation resolution,
 streaming, cost accounting. Set `LLM_PROVIDER=openai` with a key and the same
-pipeline produces real answers.
+loop runs with a model deciding instead.
 
 No accounts are needed in demo mode: a local SQLite database, a local vector
 store, local embeddings, and synthetic data. Point `DATABASE_URL` at a Supabase
@@ -301,12 +341,15 @@ fieldops-copilot/
 │   ├── app/audit/      the append-only trail, and cost accounting
 │   ├── app/db/         models, dialect-portable column types, seed data
 │   ├── app/api/        routes, dependencies, request context
+│   ├── app/agent/      the loop, the tools, the MCP client
+│   ├── app/connectors/ CRM protocol · Service Fusion · mock
 │   ├── app/llm/        provider abstraction, cost accounting
 │   ├── app/rag/        extract · chunk · embed · store · search · cite · answer
 │   └── alembic/        migrations — the single source of truth for the schema
 ├── packages/shared/    types shared across the boundary
 ├── fixtures/corpus/    the synthetic corpus, as reviewable Markdown
 ├── fixtures/eval/      the retrieval evaluation set
+├── fixtures/crm/       the synthetic customer book
 └── infra/              deployment notes, Supabase preparation
 ```
 
@@ -318,10 +361,11 @@ fieldops-copilot/
 | 1 · Authentication, roles, audit trail, data layer | ✅ |
 | 2 · Document ingestion + role-filtered vector retrieval | ✅ |
 | 3 · Hybrid retrieval, reranking, chat with citations | ✅ |
-| 4 · Service Fusion connector (read-only) | ⬜ |
-| 5 · Ply inventory connector | ⬜ |
-| 6 · RingCentral caller lookup and real-time call assistance | ⬜ |
-| 7 · Cost dashboard, deployment, documentation | ⬜ |
+| 4 · Agentic tool use, MCP integration, chat interface | ✅ |
+| 5 · Service Fusion connector (read-only) | ✅ |
+| 6 · Ply inventory connector | ⬜ |
+| 7 · RingCentral caller lookup and real-time call assistance | ⬜ |
+| 8 · Cost dashboard, deployment, documentation | ⬜ |
 
 **Milestone 1** — Argon2id passwords, revocable server-side sessions with a
 sliding idle window and a hard ceiling, four roles behind one permission table,
@@ -339,12 +383,22 @@ with role tagging that rewrites its chunks.
 search fused on rank, cross-encoder reranking with exact-term ordering, parent
 expansion under a context budget, structurally resolved citations, and a
 streamed chat endpoint. Plus an evaluation set and a script that scores
-recall@k and MRR, with an ablation for each stage. 171 tests.
+recall@k and MRR, with an ablation for each stage.
+
+**Milestone 4** — an agent loop with role-gated tools, a **Model Context
+Protocol client** consuming the official `mcp-server-time`, tool-call streaming
+on both providers, and a chat interface with Markdown, inline citation chips,
+message editing and history.
+
+**Milestone 5** — a read-only `CrmConnector` protocol, a Service Fusion adapter,
+a mock backed by a synthetic customer book, both exposed as tools and as a
+Customer Search page. 209 tests.
 
 ## Documentation
 
 | | |
 |---|---|
+| [docs/AGENT.md](docs/AGENT.md) | Tool routing, the MCP integration, and the loop's constraints |
 | [docs/RAG.md](docs/RAG.md) | The whole pipeline, ingest and query, with the measured ablation |
 | [docs/SECURITY.md](docs/SECURITY.md) | Sessions, the role filter, the audit trail |
 | [infra/README.md](infra/README.md) | Migrations, and preparing a Supabase project |

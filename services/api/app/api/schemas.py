@@ -162,6 +162,11 @@ class SourceOut(Schema):
 class AskRequest(Schema):
     question: str = Field(min_length=1, max_length=2000)
     conversation_id: str | None = None
+    # Editing a question replaces it and everything after it, rather than
+    # branching. A branching thread is a better research tool and a worse
+    # working one: the person asking has a customer waiting and wants the
+    # corrected answer, not two of them.
+    edit_message_id: str | None = None
 
 
 class ChatMessageOut(Schema):
@@ -183,6 +188,60 @@ class ConversationDetail(Schema):
     id: str
     title: str
     messages: list[ChatMessageOut]
+
+
+class CustomerSummary(Schema):
+    id: str
+    name: str
+    phone: str
+    email: str
+    address: str
+    since: str
+    notes: str = ""
+
+
+class EquipmentOut(Schema):
+    id: str
+    model: str
+    serial: str
+    installed_on: str
+    location: str
+    warranty_until: str | None = None
+
+
+class JobOut(Schema):
+    id: str
+    date: str
+    kind: str
+    summary: str
+    technician: str
+    notes: str = ""
+    status: str
+
+
+class EstimateOut(Schema):
+    id: str
+    date: str
+    summary: str
+    amount_usd: float
+    status: str
+
+
+class InvoiceOut(Schema):
+    id: str
+    date: str
+    amount_usd: float
+    balance_usd: float
+    status: str
+
+
+class CustomerDetailOut(Schema):
+    customer: CustomerSummary
+    equipment: list[EquipmentOut]
+    jobs: list[JobOut]
+    estimates: list[EstimateOut]
+    invoices: list[InvoiceOut]
+    outstanding_usd: float
 
 
 class HealthResponse(Schema):
