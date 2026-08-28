@@ -55,6 +55,9 @@ class Settings(BaseSettings):
     service_fusion_client_id: str | None = None
     service_fusion_client_secret: str | None = None
 
+    inventory_provider: Literal["mock", "ply"] = "mock"
+    ply_api_key: str | None = None
+
     # --- Agent --------------------------------------------------------------
     # Where "today" is. An assistant asked for the date has to answer in the
     # business's timezone, not the server's — a container in another region

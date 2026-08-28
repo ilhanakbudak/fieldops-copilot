@@ -1,7 +1,9 @@
 import type {
   ApiErrorBody,
+  CreateUserRequest,
   CustomerRecord,
   CustomerSummary,
+  Material,
   ConversationDetail,
   ConversationSummary,
   DocumentSummary,
@@ -9,6 +11,8 @@ import type {
   MeResponse,
   Role,
   SearchResponse,
+  UpdateUserRequest,
+  UserSummary,
 } from "@fieldops/shared";
 
 /**
@@ -112,6 +116,20 @@ export const api = {
     request<CustomerSummary[]>(`/customers?q=${encodeURIComponent(query)}`),
 
   customer: (id: string) => request<CustomerRecord>(`/customers/${id}`),
+
+  findMaterials: (query: string) =>
+    request<Material[]>(`/inventory?q=${encodeURIComponent(query)}`),
+
+  users: () => request<UserSummary[]>("/admin/users"),
+
+  createUser: (input: CreateUserRequest) =>
+    request<UserSummary>("/admin/users", { method: "POST", body: JSON.stringify(input) }),
+
+  updateUser: (id: string, patch: UpdateUserRequest) =>
+    request<UserSummary>(`/admin/users/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(patch),
+    }),
 
   search: (query: string, limit = 10) =>
     request<SearchResponse>(

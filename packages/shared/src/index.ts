@@ -282,6 +282,44 @@ export interface CustomerRecord {
   outstandingUsd: number;
 }
 
+/* --- Inventory ------------------------------------------------------------ */
+
+export interface StockLocation {
+  warehouse: string;
+  aisle: string;
+  row: string;
+  bin: string;
+  onHand: number;
+  /** Reserved against scheduled jobs. */
+  committed: number;
+  available: number;
+}
+
+export interface MaterialPricing {
+  supplier: string;
+  supplierSku: string;
+  leadTimeDays: number;
+  costUsd: number;
+  listUsd: number;
+}
+
+export interface Material {
+  id: string;
+  sku: string;
+  name: string;
+  category: string;
+  unit: string;
+  available: number;
+  reorderPoint: number;
+  belowReorder: boolean;
+  stock: StockLocation[];
+  /**
+   * `null` for a caller without `pricing:read` — withheld, not zero. A UI that
+   * renders a missing price as $0.00 is worse than one that renders nothing.
+   */
+  pricing: MaterialPricing | null;
+}
+
 /** The `sources` event: what retrieval found, sent before any answer text. */
 export interface SourcesEvent {
   sources: RetrievedSource[];

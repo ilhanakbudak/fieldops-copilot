@@ -8,6 +8,7 @@ run() { printf '=== %s ===\n' "$1"; shift; "$@"; }
 run "shared build"   npm run build --workspace packages/shared
 run "web typecheck"  npm run typecheck --workspace apps/web
 run "web lint"       npm run lint --workspace apps/web
+run "web test"       npm run test --workspace apps/web
 run "web build"      npm run build --workspace apps/web
 run "api lint"       npm run api:lint
 run "api typecheck"  npm run api:typecheck

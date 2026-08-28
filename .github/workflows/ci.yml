@@ -21,6 +21,7 @@ jobs:
       - run: npm run build --workspace packages/shared
       - run: npm run typecheck --workspace apps/web
       - run: npm run lint --workspace apps/web
+      - run: npm run test --workspace apps/web
       - run: npm run build --workspace apps/web
 
   api:

@@ -244,6 +244,39 @@ class CustomerDetailOut(Schema):
     outstanding_usd: float
 
 
+class StockLocationOut(Schema):
+    warehouse: str
+    aisle: str
+    row: str
+    bin: str
+    on_hand: int
+    committed: int
+    available: int
+
+
+class MaterialPricingOut(Schema):
+    supplier: str
+    supplier_sku: str
+    lead_time_days: int
+    cost_usd: float
+    list_usd: float
+
+
+class MaterialOut(Schema):
+    id: str
+    sku: str
+    name: str
+    category: str
+    unit: str
+    available: int
+    reorder_point: int
+    below_reorder: bool
+    stock: list[StockLocationOut]
+    # Absent, not zero, for a caller without `pricing:read`. A UI that renders a
+    # withheld price as $0.00 is worse than one that renders nothing.
+    pricing: MaterialPricingOut | None = None
+
+
 class HealthResponse(Schema):
     status: str
     demo_mode: bool

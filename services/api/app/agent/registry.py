@@ -12,6 +12,7 @@ server advertising `search` cannot shadow `search_knowledge_base`.
 from __future__ import annotations
 
 from app.agent.builtin.crm import FindCustomer, GetCustomerDetail
+from app.agent.builtin.inventory import FindMaterial
 from app.agent.builtin.knowledge import SearchKnowledgeBase
 from app.agent.mcp import mcp_registry
 from app.agent.tools import Tool
@@ -21,6 +22,7 @@ BUILTIN: list[Tool] = [
     SearchKnowledgeBase(),
     FindCustomer(),
     GetCustomerDetail(),
+    FindMaterial(),
 ]
 
 

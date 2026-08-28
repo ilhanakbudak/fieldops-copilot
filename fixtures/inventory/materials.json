@@ -1,0 +1,144 @@
+{
+  "$comment": [
+    "A synthetic parts catalogue for Northgate Water Systems. Every SKU, bin",
+    "location and supplier is invented.",
+    "",
+    "Shaped around the questions a technician actually asks from a van: where is",
+    "it, how many are there, and is the one I want the same as the one next to it",
+    "on the shelf. Hence two PEX ball valves a size apart, and a part that is out",
+    "of stock at the main warehouse but not at the second."
+  ],
+  "materials": [
+    {
+      "id": "MAT-1180",
+      "sku": "PEX-BV-100",
+      "name": "1-inch PEX ball valve",
+      "category": "Valves and fittings",
+      "unit": "each",
+      "stock": [
+        { "warehouse": "Portland main", "aisle": "C", "row": "4", "bin": "C4-12", "on_hand": 34, "committed": 6 },
+        { "warehouse": "Gorham satellite", "aisle": "A", "row": "2", "bin": "A2-05", "on_hand": 8, "committed": 0 }
+      ],
+      "reorder_point": 20,
+      "supplier": "Halstead Fluid Supply",
+      "supplier_sku": "HFS-88412",
+      "lead_time_days": 3,
+      "cost_usd": 11.4,
+      "list_usd": 32.0
+    },
+    {
+      "id": "MAT-1181",
+      "sku": "PEX-BV-075",
+      "name": "3/4-inch PEX ball valve",
+      "category": "Valves and fittings",
+      "unit": "each",
+      "stock": [
+        { "warehouse": "Portland main", "aisle": "C", "row": "4", "bin": "C4-11", "on_hand": 61, "committed": 4 }
+      ],
+      "reorder_point": 25,
+      "supplier": "Halstead Fluid Supply",
+      "supplier_sku": "HFS-88410",
+      "lead_time_days": 3,
+      "cost_usd": 9.1,
+      "list_usd": 26.0
+    },
+    {
+      "id": "MAT-2044",
+      "sku": "NG-BV-14",
+      "name": "NG-BV-14 brine valve assembly",
+      "category": "Softener parts",
+      "unit": "each",
+      "stock": [
+        { "warehouse": "Portland main", "aisle": "F", "row": "1", "bin": "F1-03", "on_hand": 5, "committed": 2 }
+      ],
+      "reorder_point": 6,
+      "supplier": "Halstead Fluid Supply",
+      "supplier_sku": "HFS-20114",
+      "lead_time_days": 5,
+      "cost_usd": 38.0,
+      "list_usd": 135.0
+    },
+    {
+      "id": "MAT-2051",
+      "sku": "NG-RES-10",
+      "name": "NG-RES-10 softener resin, 2 cu ft",
+      "category": "Media",
+      "unit": "bag",
+      "stock": [
+        { "warehouse": "Portland main", "aisle": "H", "row": "3", "bin": "H3-01", "on_hand": 12, "committed": 2 }
+      ],
+      "reorder_point": 8,
+      "supplier": "Halstead Fluid Supply",
+      "supplier_sku": "HFS-55120",
+      "lead_time_days": 7,
+      "cost_usd": 148.0,
+      "list_usd": 420.0
+    },
+    {
+      "id": "MAT-3310",
+      "sku": "UV-LAMP-12",
+      "name": "Ultraviolet lamp, 12 gpm",
+      "category": "UV parts",
+      "unit": "each",
+      "stock": [
+        { "warehouse": "Portland main", "aisle": "B", "row": "2", "bin": "B2-08", "on_hand": 0, "committed": 0 },
+        { "warehouse": "Gorham satellite", "aisle": "A", "row": "1", "bin": "A1-02", "on_hand": 3, "committed": 1 }
+      ],
+      "reorder_point": 4,
+      "supplier": "Coventry Water Components",
+      "supplier_sku": "CWC-7781",
+      "lead_time_days": 2,
+      "cost_usd": 62.0,
+      "list_usd": 185.0
+    },
+    {
+      "id": "MAT-3311",
+      "sku": "UV-SLEEVE-12",
+      "name": "Ultraviolet quartz sleeve, 12 gpm",
+      "category": "UV parts",
+      "unit": "each",
+      "stock": [
+        { "warehouse": "Portland main", "aisle": "B", "row": "2", "bin": "B2-09", "on_hand": 7, "committed": 0 }
+      ],
+      "reorder_point": 4,
+      "supplier": "Coventry Water Components",
+      "supplier_sku": "CWC-7782",
+      "lead_time_days": 2,
+      "cost_usd": 54.0,
+      "list_usd": 160.0
+    },
+    {
+      "id": "MAT-4102",
+      "sku": "SED-CART-5M",
+      "name": "Sediment cartridge, 5 micron",
+      "category": "Filtration",
+      "unit": "each",
+      "stock": [
+        { "warehouse": "Portland main", "aisle": "D", "row": "1", "bin": "D1-14", "on_hand": 96, "committed": 12 },
+        { "warehouse": "Gorham satellite", "aisle": "B", "row": "3", "bin": "B3-07", "on_hand": 24, "committed": 0 }
+      ],
+      "reorder_point": 40,
+      "supplier": "Halstead Fluid Supply",
+      "supplier_sku": "HFS-31200",
+      "lead_time_days": 3,
+      "cost_usd": 6.0,
+      "list_usd": 24.0
+    },
+    {
+      "id": "MAT-5001",
+      "sku": "SALT-40",
+      "name": "Solar salt, 40 lb bag",
+      "category": "Consumables",
+      "unit": "bag",
+      "stock": [
+        { "warehouse": "Portland main", "aisle": "G", "row": "1", "bin": "G1-00", "on_hand": 210, "committed": 30 }
+      ],
+      "reorder_point": 80,
+      "supplier": "Halstead Fluid Supply",
+      "supplier_sku": "HFS-10040",
+      "lead_time_days": 1,
+      "cost_usd": 5.0,
+      "list_usd": 14.0
+    }
+  ]
+}

@@ -14,10 +14,10 @@
   <img alt="License" src="https://img.shields.io/badge/license-MIT-blue">
 </p>
 
-> **🚧 In progress.** Sign in, upload a manual, ask questions of it, and pull a
-> customer up — that works today, with an agent that decides which of those a
-> question actually needs. Inventory and live call assist land milestone by
-> milestone; see [Status](#status).
+> **🚧 In progress.** Sign in, upload a manual, ask questions of it, pull a
+> customer up, find a part — that works today, with an agent that decides which
+> of those a question actually needs. Live call assist and deployment land next;
+> see [Status](#status).
 
 ---
 
@@ -87,6 +87,19 @@ a bad execution.
   those passages never entered the candidate set. The tools are gated the same
   way: a technician's model is never told a pricing lookup exists.</em>
 </p>
+
+**Parts, and the role boundary inside a single answer:**
+
+<p align="center">
+  <img alt="A technician searching for a PEX ball valve: bin, aisle, on-hand and committed counts, with supplier and cost withheld" src="docs/assets/inventory.png" width="880">
+  <br><em>A technician gets the bin and the count. A salesperson asking the same
+  question also gets supplier and cost — the gate is on the fields, not the
+  tool, because the tool is useful to everyone and half of it is not.</em>
+</p>
+
+The count is net of what is already committed to scheduled jobs. Somebody told
+there are five of something who arrives to find two spoken for has been given a
+true number and a useless one.
 
 **Customer records, read-only by construction:**
 
@@ -342,7 +355,7 @@ fieldops-copilot/
 │   ├── app/db/         models, dialect-portable column types, seed data
 │   ├── app/api/        routes, dependencies, request context
 │   ├── app/agent/      the loop, the tools, the MCP client
-│   ├── app/connectors/ CRM protocol · Service Fusion · mock
+│   ├── app/connectors/ CRM and inventory protocols · vendor adapters · mocks
 │   ├── app/llm/        provider abstraction, cost accounting
 │   ├── app/rag/        extract · chunk · embed · store · search · cite · answer
 │   └── alembic/        migrations — the single source of truth for the schema
@@ -350,6 +363,7 @@ fieldops-copilot/
 ├── fixtures/corpus/    the synthetic corpus, as reviewable Markdown
 ├── fixtures/eval/      the retrieval evaluation set
 ├── fixtures/crm/       the synthetic customer book
+├── fixtures/inventory/ the synthetic parts catalogue
 └── infra/              deployment notes, Supabase preparation
 ```
 
@@ -363,7 +377,7 @@ fieldops-copilot/
 | 3 · Hybrid retrieval, reranking, chat with citations | ✅ |
 | 4 · Agentic tool use, MCP integration, chat interface | ✅ |
 | 5 · Service Fusion connector (read-only) | ✅ |
-| 6 · Ply inventory connector | ⬜ |
+| 6 · Ply inventory connector, employee administration | ✅ |
 | 7 · RingCentral caller lookup and real-time call assistance | ⬜ |
 | 8 · Cost dashboard, deployment, documentation | ⬜ |
 
@@ -392,7 +406,11 @@ message editing and history.
 
 **Milestone 5** — a read-only `CrmConnector` protocol, a Service Fusion adapter,
 a mock backed by a synthetic customer book, both exposed as tools and as a
-Customer Search page. 209 tests.
+Customer Search page.
+
+**Milestone 6** — an `InventoryConnector` on the same pattern with a Ply-shaped
+adapter, field-level pricing gating, an Inventory page, and employee
+administration with component tests. 236 tests.
 
 ## Documentation
 

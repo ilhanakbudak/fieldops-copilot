@@ -173,6 +173,28 @@ _ROUTES: list[tuple[str, frozenset[str]]] = [
         frozenset({"customer", "pull", "account", "client", "phone", "address", "who"}),
     ),
     (
+        "find_material",
+        frozenset(
+            {
+                "where",
+                "stock",
+                "part",
+                "parts",
+                "valve",
+                "bin",
+                "aisle",
+                "warehouse",
+                "many",
+                "inventory",
+                "material",
+                "cartridge",
+                "lamp",
+                "resin",
+                "salt",
+            }
+        ),
+    ),
+    (
         "get_customer_detail",
         frozenset({"history", "jobs", "installed", "equipment", "estimate", "invoice", "balance"}),
     ),
@@ -255,6 +277,8 @@ def _arguments(name: str, question: str) -> dict[str, object]:
         from app.config import get_settings
 
         return {"timezone": get_settings().business_timezone}
+    if name == "find_material":
+        return {"query": question}
     if name in {"find_customer", "get_customer_detail"}:
         # Everything that looks like a proper noun. Crude, and it recovers
         # "John Smith" out of "pull up John Smith in Portland", which is the

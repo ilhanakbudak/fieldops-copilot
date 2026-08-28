@@ -29,6 +29,8 @@ const SHOTS = [
   { name: "chat-agent", path: "/chat", width: 1440, height: 900, as: "office@example.com", ask: "What is today's date?", then: "What did we install for Priya Raman?" },
   { name: "chat-declined", path: "/chat", width: 1440, height: 640, as: "sales@example.com", ask: "What does error code E-04 mean?" },
   { name: "customers", path: "/customers", width: 1440, height: 1080, as: "office@example.com", type: "Priya Raman" },
+  { name: "inventory", path: "/inventory", width: 1440, height: 900, as: "tech@example.com", type: "1-inch PEX ball valve" },
+  { name: "admin-users", path: "/admin/users", width: 1440, height: 780, as: "admin@example.com" },
   { name: "knowledge", path: "/knowledge", width: 1440, height: 900, as: "admin@example.com" },
   { name: "retrieval-technician", path: "/search", width: 1440, height: 900, as: "tech@example.com", search: "What does error code E-04 mean?" },
   { name: "chat-tablet", path: "/chat", width: 834, height: 900, as: "tech@example.com", ask: "What does error code E-04 mean?" },
@@ -144,7 +146,7 @@ async function main() {
       await send("Runtime.evaluate", {
         awaitPromise: true,
         expression: `(async () => {
-          const input = document.querySelector('input[aria-label="Search customers"]');
+          const input = document.querySelector('input[type=search]');
           const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set;
           setter.call(input, ${JSON.stringify(shot.type)});
           input.dispatchEvent(new Event("input", { bubbles: true }));

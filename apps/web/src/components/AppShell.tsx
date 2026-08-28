@@ -20,6 +20,7 @@ import {
   ShieldIcon,
   SignOutIcon,
   TrashIcon,
+  UsersIcon,
 } from "@/components/icons";
 import styles from "./AppShell.module.css";
 
@@ -44,13 +45,16 @@ const NAVIGATION: Array<{ label: string; items: NavItem[] }> = [
     label: "Operations",
     items: [
       { href: "/customers", label: "Customers", icon: CustomersIcon, permission: "customers:read" },
-      { href: "/inventory", label: "Inventory", icon: InventoryIcon, soon: true },
+      { href: "/inventory", label: "Inventory", icon: InventoryIcon, permission: "inventory:read" },
       { href: "/call", label: "Live call", icon: CallIcon, permission: "calls:assist", soon: true },
     ],
   },
   {
     label: "Administration",
-    items: [{ href: "/audit", label: "Audit log", icon: ShieldIcon, permission: "audit:read", soon: true }],
+    items: [
+      { href: "/admin/users", label: "Employees", icon: UsersIcon, permission: "users:manage" },
+      { href: "/audit", label: "Audit log", icon: ShieldIcon, permission: "audit:read", soon: true },
+    ],
   },
 ];
 

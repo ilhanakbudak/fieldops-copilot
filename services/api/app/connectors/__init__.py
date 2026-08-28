@@ -14,6 +14,15 @@ from app.connectors.base import (
     Invoice,
     Job,
 )
+from app.connectors.inventory import (
+    InventoryConnector,
+    InventoryUnavailableError,
+    Material,
+    MaterialPricing,
+    MockInventoryConnector,
+    PlyConnector,
+    StockLocation,
+)
 from app.connectors.mock import MockCrmConnector
 from app.connectors.service_fusion import ServiceFusionConnector
 
@@ -25,13 +34,23 @@ __all__ = [
     "CustomerDetail",
     "Equipment",
     "Estimate",
+    "InventoryConnector",
+    "InventoryUnavailableError",
     "Invoice",
     "Job",
+    "Material",
+    "MaterialPricing",
     "MockCrmConnector",
+    "MockInventoryConnector",
+    "PlyConnector",
     "ServiceFusionConnector",
+    "StockLocation",
     "build_crm",
+    "build_inventory",
     "get_crm",
+    "get_inventory",
     "reset_crm",
+    "reset_inventory",
 ]
 
 _crm: CrmConnector | None = None
@@ -56,3 +75,24 @@ def get_crm() -> CrmConnector:
 def reset_crm() -> None:
     global _crm
     _crm = None
+
+
+_inventory: InventoryConnector | None = None
+
+
+def build_inventory(settings: Settings) -> InventoryConnector:
+    if settings.inventory_provider == "ply":
+        return PlyConnector(settings.ply_api_key or "")
+    return MockInventoryConnector()
+
+
+def get_inventory() -> InventoryConnector:
+    global _inventory
+    if _inventory is None:
+        _inventory = build_inventory(get_settings())
+    return _inventory
+
+
+def reset_inventory() -> None:
+    global _inventory
+    _inventory = None

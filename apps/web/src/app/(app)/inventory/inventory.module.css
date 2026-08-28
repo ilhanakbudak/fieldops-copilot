@@ -1,0 +1,116 @@
+.search {
+  display: flex;
+  gap: var(--space-3);
+  margin-bottom: var(--space-6);
+  max-width: 34rem;
+}
+
+@media (max-width: 599px) {
+  .search { flex-direction: column; }
+}
+
+.results { display: grid; gap: var(--space-4); }
+
+.material {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-xs);
+  overflow: hidden;
+}
+
+.head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-4);
+  padding: var(--space-4) var(--space-5);
+}
+
+.name { font-size: var(--text-lg); font-weight: 600; }
+
+.sku {
+  margin-top: 2px;
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--text-tertiary);
+}
+
+.count { text-align: right; }
+
+.countValue {
+  font-size: var(--text-xl);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+}
+
+.countLow { color: var(--warning-700); }
+.countZero { color: var(--danger-700); }
+
+.countLabel { font-size: var(--text-xs); color: var(--text-tertiary); }
+
+/* Where it is, given the emphasis. It is the whole question for somebody
+   standing in a warehouse with a phone in one hand. */
+.locations {
+  border-top: 1px solid var(--border);
+  background: var(--surface-sunken);
+}
+
+.location {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-5);
+  border-bottom: 1px solid var(--border);
+}
+
+.location:last-child { border-bottom: none; }
+
+.bin {
+  font-family: var(--font-mono);
+  font-size: var(--text-base);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.where { font-size: var(--text-sm); color: var(--text-secondary); }
+
+.quantities {
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.commercial {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-5);
+  padding: var(--space-3) var(--space-5);
+  border-top: 1px solid var(--border);
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+}
+
+.commercialValue {
+  font-weight: 600;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+.withheld {
+  padding: var(--space-3) var(--space-5);
+  border-top: 1px solid var(--border);
+  font-size: var(--text-xs);
+  color: var(--text-tertiary);
+}
+
+.examples {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
