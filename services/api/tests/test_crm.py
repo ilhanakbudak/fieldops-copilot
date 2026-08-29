@@ -54,12 +54,11 @@ async def test_search_matches_on_a_phone_number_in_any_format(
     employee types 207-555-…. All three are the same customer."""
     for written in ("(207) 555-0142", "207-555-0142", "+1 207 555 0142", "2075550142"):
         found = await crm.find_by_phone(written)
-        assert found is not None, written
-        assert found.id == "NG-1042"
+        assert [customer.id for customer in found] == ["NG-1042"], written
 
 
 async def test_an_unknown_number_finds_nobody(crm: MockCrmConnector) -> None:
-    assert await crm.find_by_phone("(207) 555-9999") is None
+    assert await crm.find_by_phone("(207) 555-9999") == []
 
 
 async def test_a_record_carries_the_technicians_notes(crm: MockCrmConnector) -> None:

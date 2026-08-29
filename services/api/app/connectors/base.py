@@ -112,4 +112,18 @@ class CrmConnector(Protocol):
 
     async def get_customer(self, customer_id: str) -> CustomerDetail | None: ...
 
-    async def find_by_phone(self, phone: str) -> Customer | None: ...
+    async def find_by_phone(self, phone: str) -> list[Customer]:
+        """Every account reachable on this number.
+
+        A list, not an optional. A phone number is not a key in any CRM that
+        has been in use for a while: a couple keeps two accounts for two
+        properties, a landlord's office line covers a dozen, and a business
+        number outlives the business. Returning the first match would make the
+        screen pop confidently wrong at the exact moment somebody is reading it
+        aloud to the person on the phone, and no amount of interface design
+        recovers from that — the wrong answer never looks uncertain.
+
+        Empty means no account has this number, which is ordinary: it is how a
+        new customer calls for the first time.
+        """
+        ...

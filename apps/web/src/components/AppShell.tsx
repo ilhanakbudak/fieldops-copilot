@@ -46,7 +46,7 @@ const NAVIGATION: Array<{ label: string; items: NavItem[] }> = [
     items: [
       { href: "/customers", label: "Customers", icon: CustomersIcon, permission: "customers:read" },
       { href: "/inventory", label: "Inventory", icon: InventoryIcon, permission: "inventory:read" },
-      { href: "/call", label: "Live call", icon: CallIcon, permission: "calls:assist", soon: true },
+      { href: "/call", label: "Live call", icon: CallIcon, permission: "calls:assist" },
     ],
   },
   {

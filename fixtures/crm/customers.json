@@ -1,14 +1,24 @@
 {
   "$comment": [
-    "A synthetic customer book for Northgate Water Systems. Every record is",
-    "invented. Phone numbers use the 555 range reserved for fiction, emails are",
-    "on the example.com documentation domain, and the street names do not exist",
-    "in the towns named.",
+    "A synthetic customer book for a water-treatment business. Every name,",
+    "address, phone number and email is invented: the phone numbers use the",
+    "555 exchange reserved for fiction, the emails are on the example.com",
+    "documentation domain, and the street names do not exist in the towns",
+    "named.",
     "",
-    "Shaped around the scenarios worth demonstrating rather than around volume:",
-    "a radon customer with a warm-water complaint, an account with an",
-    "outstanding balance, and two households sharing a surname so that name",
-    "search has to disambiguate on the town."
+    "Three shapes here exist to make specific failures reproducible:",
+    "",
+    "  Two households sharing a surname (John Smith, NG-1042 and NG-1119), so",
+    "  a name search has to disambiguate on the town rather than guess.",
+    "",
+    "  Two accounts sharing a phone number (NG-1203 and NG-1288, a rental",
+    "  property under the same owner's line), so the caller-lookup screen pop",
+    "  has to offer a choice rather than open the first match. A phone number",
+    "  is not a key in any CRM that has been in use for a while.",
+    "",
+    "  An account on hold with an overdue balance, so the record a screen pop",
+    "  shows can carry something the person answering needs to know before",
+    "  they promise anything."
   ],
   "customers": [
     {
@@ -16,9 +26,14 @@
       "name": "John Smith",
       "phone": "(207) 555-0142",
       "email": "j.smith@example.com",
-      "address": { "line1": "18 Kettlebrook Lane", "city": "Portland", "state": "ME", "postcode": "04101" },
+      "address": {
+        "line1": "18 Kettlebrook Lane",
+        "city": "Portland",
+        "state": "ME",
+        "postcode": "04101"
+      },
       "since": "2021-04-12",
-      "notes": "Prefers morning appointments. Dog in the yard — call ahead.",
+      "notes": "Prefers morning appointments. Dog in the yard \u2014 call ahead.",
       "equipment": [
         {
           "id": "EQ-8801",
@@ -76,8 +91,20 @@
         }
       ],
       "invoices": [
-        { "id": "INV-9104", "date": "2026-05-26", "amount_usd": 7450.0, "balance_usd": 0.0, "status": "paid" },
-        { "id": "INV-9330", "date": "2026-08-16", "amount_usd": 110.0, "balance_usd": 110.0, "status": "open" }
+        {
+          "id": "INV-9104",
+          "date": "2026-05-26",
+          "amount_usd": 7450.0,
+          "balance_usd": 0.0,
+          "status": "paid"
+        },
+        {
+          "id": "INV-9330",
+          "date": "2026-08-16",
+          "amount_usd": 110.0,
+          "balance_usd": 110.0,
+          "status": "open"
+        }
       ]
     },
     {
@@ -85,9 +112,14 @@
       "name": "John Smith",
       "phone": "(207) 555-0198",
       "email": "jsmith.gorham@example.com",
-      "address": { "line1": "4 Wrenfield Court", "city": "Gorham", "state": "ME", "postcode": "04038" },
+      "address": {
+        "line1": "4 Wrenfield Court",
+        "city": "Gorham",
+        "state": "ME",
+        "postcode": "04038"
+      },
       "since": "2023-09-02",
-      "notes": "Second Smith account. Not related to NG-1042 — check the town before quoting.",
+      "notes": "Second Smith account. Not related to NG-1042 \u2014 check the town before quoting.",
       "equipment": [
         {
           "id": "EQ-9014",
@@ -111,7 +143,13 @@
       ],
       "estimates": [],
       "invoices": [
-        { "id": "INV-8720", "date": "2026-02-12", "amount_usd": 185.0, "balance_usd": 0.0, "status": "paid" }
+        {
+          "id": "INV-8720",
+          "date": "2026-02-12",
+          "amount_usd": 185.0,
+          "balance_usd": 0.0,
+          "status": "paid"
+        }
       ]
     },
     {
@@ -119,7 +157,12 @@
       "name": "Priya Raman",
       "phone": "(207) 555-0233",
       "email": "p.raman@example.com",
-      "address": { "line1": "77 Alderway Road", "city": "Falmouth", "state": "ME", "postcode": "04105" },
+      "address": {
+        "line1": "77 Alderway Road",
+        "city": "Falmouth",
+        "state": "ME",
+        "postcode": "04105"
+      },
       "since": "2019-11-20",
       "notes": "Well water, high iron. Third property on the same street.",
       "equipment": [
@@ -162,7 +205,13 @@
       ],
       "estimates": [],
       "invoices": [
-        { "id": "INV-9255", "date": "2026-07-23", "amount_usd": 110.0, "balance_usd": 0.0, "status": "paid" }
+        {
+          "id": "INV-9255",
+          "date": "2026-07-23",
+          "amount_usd": 110.0,
+          "balance_usd": 0.0,
+          "status": "paid"
+        }
       ]
     },
     {
@@ -170,7 +219,12 @@
       "name": "Dale Okonkwo",
       "phone": "(207) 555-0177",
       "email": "d.okonkwo@example.com",
-      "address": { "line1": "2 Harrowgate Terrace", "city": "Scarborough", "state": "ME", "postcode": "04074" },
+      "address": {
+        "line1": "2 Harrowgate Terrace",
+        "city": "Scarborough",
+        "state": "ME",
+        "postcode": "04074"
+      },
       "since": "2025-06-30",
       "notes": "Account on hold pending payment. Do not schedule without office approval.",
       "equipment": [
@@ -191,7 +245,7 @@
           "summary": "Lamp replacement, annual",
           "technician": "Marta Reyes",
           "status": "completed",
-          "notes": "Lamp and sleeve replaced. Sediment pre-filter was heavily loaded — customer had not changed it. Left two spares."
+          "notes": "Lamp and sleeve replaced. Sediment pre-filter was heavily loaded \u2014 customer had not changed it. Left two spares."
         }
       ],
       "estimates": [
@@ -204,7 +258,58 @@
         }
       ],
       "invoices": [
-        { "id": "INV-9188", "date": "2026-04-19", "amount_usd": 245.0, "balance_usd": 245.0, "status": "overdue" }
+        {
+          "id": "INV-9188",
+          "date": "2026-04-19",
+          "amount_usd": 245.0,
+          "balance_usd": 245.0,
+          "status": "overdue"
+        }
+      ]
+    },
+    {
+      "id": "NG-1288",
+      "name": "Dale Okonkwo",
+      "phone": "(207) 555-0177",
+      "email": "d.okonkwo@example.com",
+      "address": {
+        "line1": "14 Marrowbone Street",
+        "city": "Scarborough",
+        "state": "ME",
+        "postcode": "04074"
+      },
+      "since": "2025-09-14",
+      "notes": "Second property, same owner, same phone. Tenant is on site during the day; the owner is the only one who authorises work. Confirm which address before scheduling.",
+      "equipment": [
+        {
+          "id": "EQ-9612",
+          "model": "NG-4200 Water Softener",
+          "serial": "NG42-01771",
+          "installed_on": "2025-09-22",
+          "location": "Basement, beside the panel",
+          "warranty_until": "2030-09-22"
+        }
+      ],
+      "jobs": [
+        {
+          "id": "JOB-5340",
+          "date": "2026-07-02",
+          "kind": "Service call",
+          "summary": "Salt bridge, brine tank",
+          "technician": "Sam Whitfield",
+          "status": "completed",
+          "notes": "Bridge broken up with a broom handle. Tenant had been topping the tank without checking the level underneath. Showed them how to check. Owner not on site."
+        }
+      ],
+      "estimates": [],
+      "invoices": [
+        {
+          "id": "INV-9301",
+          "date": "2026-07-03",
+          "amount_usd": 180.0,
+          "balance_usd": 0.0,
+          "status": "paid"
+        }
       ]
     }
   ]

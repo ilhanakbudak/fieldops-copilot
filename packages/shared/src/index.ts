@@ -283,6 +283,51 @@ export interface CustomerRecord {
   outstandingUsd: number;
 }
 
+/* --- Caller lookup -------------------------------------------------------- */
+
+export interface InboundCall {
+  callId: string;
+  /** As the phone system sent it, because it is what gets read back to the
+   *  caller. The normalised form is a matching key and never a display one. */
+  fromNumber: string;
+  toNumber: string;
+  receivedAt: string;
+}
+
+/**
+ * What lands on the screen when the phone rings.
+ *
+ * Three shapes in one message, and telling them apart is the whole job of the
+ * page that renders it:
+ *
+ *   `matches` empty — nobody in the CRM has this number. A new customer, or a
+ *   withheld one. The pop still appears; the number is the useful part.
+ *
+ *   one match with `detail` — the ordinary case. Equipment, history and notes
+ *   are on screen before the handset reaches an ear.
+ *
+ *   more than one match, `detail` null — two accounts share this line. Nothing
+ *   is opened, because a wrong record never looks uncertain while somebody is
+ *   reading it aloud.
+ */
+export interface ScreenPop {
+  call: InboundCall;
+  matches: CustomerSummary[];
+  detail: CustomerRecord | null;
+}
+
+export interface CallDemoNumber {
+  number: string;
+  label: string;
+}
+
+/** Demo mode only: what the browser needs to post itself a webhook. */
+export interface CallDemo {
+  token: string;
+  header: string;
+  numbers: CallDemoNumber[];
+}
+
 /* --- Inventory ------------------------------------------------------------ */
 
 export interface StockLocation {

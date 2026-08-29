@@ -31,6 +31,10 @@ const SHOTS = [
   { name: "customers", path: "/customers", width: 1440, height: 1080, as: "office@example.com", type: "Priya Raman" },
   { name: "inventory", path: "/inventory", width: 1440, height: 900, as: "tech@example.com", type: "1-inch PEX ball valve" },
   { name: "admin-users", path: "/admin/users", width: 1440, height: 780, as: "admin@example.com" },
+  // The screen pop, driven the way the page itself drives it: the browser posts
+  // a webhook and waits for it to come back down the socket.
+  { name: "call-screen-pop", path: "/call", width: 1440, height: 780, as: "office@example.com", ring: 0 },
+  { name: "call-ambiguous", path: "/call", width: 1440, height: 620, as: "office@example.com", ring: 1 },
   { name: "knowledge", path: "/knowledge", width: 1440, height: 900, as: "admin@example.com" },
   { name: "retrieval-technician", path: "/search", width: 1440, height: 900, as: "tech@example.com", search: "What does error code E-04 mean?" },
   { name: "chat-tablet", path: "/chat", width: 834, height: 900, as: "tech@example.com", ask: "What does error code E-04 mean?" },
@@ -139,6 +143,30 @@ async function main() {
         });
         await sleep(600);
       }
+      await sleep(600);
+    }
+
+    if (shot.ring !== undefined) {
+      // The socket has to be open before the webhook lands, or the pop is
+      // published to nobody. Waiting for the "Watching for calls" state is the
+      // page's own signal that it is.
+      await send("Runtime.evaluate", {
+        awaitPromise: true,
+        expression: `(async () => {
+          const ready = async () => document.body.innerText.includes("Watching for calls");
+          for (let i = 0; i < 40 && !(await ready()); i++) {
+            await new Promise((r) => setTimeout(r, 250));
+          }
+          const demo = await (await fetch("/api/calls/demo")).json();
+          const entry = demo.numbers[${shot.ring}];
+          await fetch("/api/calls/incoming", {
+            method: "POST",
+            headers: { "content-type": "application/json", [demo.header]: demo.token },
+            body: JSON.stringify({ event: "call.ringing", from: entry.number, to: "(207) 555-0100", callId: "CALL-SHOT" }),
+          });
+          await new Promise((r) => setTimeout(r, 1500));
+        })()`,
+      });
       await sleep(600);
     }
 

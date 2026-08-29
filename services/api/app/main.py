@@ -17,7 +17,7 @@ from sqlalchemy import func, select
 
 from app.agent import mcp_registry
 from app.api.middleware import RequestContextMiddleware
-from app.api.routes import admin, auth, chat, customers, documents, inventory
+from app.api.routes import admin, auth, calls, chat, customers, documents, inventory
 from app.api.schemas import HealthResponse
 from app.config import Settings, get_settings
 from app.core.errors import install_error_handlers
@@ -95,6 +95,7 @@ app.include_router(documents.router)
 app.include_router(chat.router)
 app.include_router(customers.router)
 app.include_router(inventory.router)
+app.include_router(calls.router)
 
 
 @app.get("/health", response_model=HealthResponse, tags=["system"])

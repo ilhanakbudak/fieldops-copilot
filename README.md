@@ -15,8 +15,9 @@
 </p>
 
 > **🚧 In progress.** Sign in, upload a manual, ask questions of it, pull a
-> customer up, find a part — that works today, with an agent that decides which
-> of those a question actually needs. Live call assist and deployment land next;
+> customer up, find a part, and have a caller's record on screen before the
+> phone is answered — that works today, with an agent that decides which of
+> those a question actually needs. Live call assist and deployment land next;
 > see [Status](#status).
 
 ---
@@ -121,6 +122,35 @@ There is also a **Retrieval** page that runs the search with no model in the
 loop, showing raw passages and similarity scores — the tool for asking whether
 retrieval is the problem before changing anything about the prompt.
 
+### The phone rings and the record is already up
+
+<p align="center">
+  <img alt="A screen pop: the caller's number, their equipment, and the last technician's notes" src="docs/assets/call-screen-pop.png" width="880">
+</p>
+
+The phone system posts a webhook, the number is normalised and matched against
+the CRM, and the record is pushed to the office over a WebSocket — equipment,
+warranty dates and the last technician's notes, on screen before anybody says
+hello.
+
+The interesting case is the one below it.
+
+<p align="center">
+  <img alt="Two accounts share one phone number, so neither is opened" src="docs/assets/call-ambiguous.png" width="880">
+</p>
+
+Two accounts share that line — one owner, two properties, the same number on
+both — and the page opens **neither**. A phone number is not a key in any CRM
+that has been in use for a while, and picking the first match would put the
+wrong address on screen at the exact moment somebody is reading it aloud. A
+wrong record never looks uncertain. So `find_by_phone` returns a list, and an
+ambiguous list is a question rather than an answer.
+
+The webhook itself answers `204` to everything — a verified call, a bad token,
+a malformed body. A status that varied would let anyone on the internet ask this
+business, at whatever rate they liked, which phone numbers belong to its
+customers. See [docs/CALLS.md](docs/CALLS.md).
+
 <p align="center">
   <img alt="The chat on a tablet, sidebar collapsed to an icon rail" src="docs/assets/chat-tablet.png" width="400">
   <img alt="The chat on a phone" src="docs/assets/chat-mobile.png" width="190">
@@ -145,8 +175,8 @@ flowchart LR
     RET <--> SB[("Supabase<br/>Postgres · pgvector · RLS")]
     CONN -.->|read only| CRM["Service Fusion"]
     CONN -.->|read only| INV["Ply inventory"]
-    CONN -.-> TEL["RingCentral"]
-    TEL -.->|"live transcript"| API
+    TEL["RingCentral"] -.->|"webhook: a phone rang"| API
+    API -.->|"WebSocket: screen pop"| WEB
 ```
 
 ### The agent
@@ -378,8 +408,8 @@ fieldops-copilot/
 | 4 · Agentic tool use, MCP integration, chat interface | ✅ |
 | 5 · Service Fusion connector (read-only) | ✅ |
 | 6 · Ply inventory connector, employee administration | ✅ |
-| 7 · RingCentral caller lookup and real-time call assistance | ⬜ |
-| 8 · Cost dashboard, deployment, documentation | ⬜ |
+| 7 · RingCentral caller lookup, screen pop over WebSocket | ✅ |
+| 8 · Live call assistance, cost dashboard, deployment | ⬜ |
 
 **Milestone 1** — Argon2id passwords, revocable server-side sessions with a
 sliding idle window and a hard ceiling, four roles behind one permission table,
@@ -410,7 +440,16 @@ Customer Search page.
 
 **Milestone 6** — an `InventoryConnector` on the same pattern with a Ply-shaped
 adapter, field-level pricing gating, an Inventory page, and employee
-administration with component tests. 236 tests.
+administration with component tests.
+
+**Milestone 7** — a `TelephonyConnector` with a RingCentral adapter and a mock
+that verifies rather than waving everything through, an inbound-call webhook
+that answers identically whatever it is given, phone normalisation into a CRM
+lookup that returns a *list*, and a permission-gated WebSocket fan-out with a
+bounded queue per subscriber. Plus the audit and retrieval work described under
+[Documentation](#documentation): every agent tool call is now recorded where the
+tools are invoked, and the evaluation set gained a confusable second manual.
+279 tests.
 
 ## Documentation
 
@@ -418,6 +457,7 @@ administration with component tests. 236 tests.
 |---|---|
 | [docs/AGENT.md](docs/AGENT.md) | Tool routing, the MCP integration, and the loop's constraints |
 | [docs/RAG.md](docs/RAG.md) | The whole pipeline, ingest and query, with the measured ablation |
+| [docs/CALLS.md](docs/CALLS.md) | The caller-lookup webhook, why it always answers 204, and the fan-out |
 | [docs/SECURITY.md](docs/SECURITY.md) | Sessions, the role filter, the audit trail |
 | [infra/README.md](infra/README.md) | Migrations, and preparing a Supabase project |
 | [fixtures/README.md](fixtures/README.md) | The synthetic corpus and what each document is for |

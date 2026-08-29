@@ -96,14 +96,15 @@ class MockCrmConnector:
             invoices=[Invoice(**item) for item in record.get("invoices", [])],
         )
 
-    async def find_by_phone(self, phone: str) -> Customer | None:
+    async def find_by_phone(self, phone: str) -> list[Customer]:
         digits = normalise_phone(phone)
         if not digits:
-            return None
-        record = next(
-            (item for item in self._load() if normalise_phone(item["phone"]) == digits), None
-        )
-        return _customer(record) if record else None
+            return []
+        return [
+            _customer(record)
+            for record in self._load()
+            if normalise_phone(record["phone"]) == digits
+        ]
 
 
 def _customer(record: dict[str, Any]) -> Customer:

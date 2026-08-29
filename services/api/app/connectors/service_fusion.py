@@ -134,9 +134,12 @@ class ServiceFusionConnector:
             invoices=[_invoice(item) for item in invoices],
         )
 
-    async def find_by_phone(self, phone: str) -> Customer | None:
-        matches = await self.search_customers(phone, limit=1)
-        return matches[0] if matches else None
+    async def find_by_phone(self, phone: str) -> list[Customer]:
+        # Service Fusion has no phone-lookup endpoint; its customer search
+        # accepts a number as a term. The limit is not 1: two accounts sharing
+        # a number is the case the caller-lookup route exists to handle, and
+        # asking for one of them would hide it here rather than solve it.
+        return await self.search_customers(phone, limit=5)
 
 
 # --- Translation ----------------------------------------------------------

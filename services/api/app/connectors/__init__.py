@@ -25,6 +25,13 @@ from app.connectors.inventory import (
 )
 from app.connectors.mock import MockCrmConnector
 from app.connectors.service_fusion import ServiceFusionConnector
+from app.connectors.telephony import (
+    InboundCall,
+    MockTelephonyConnector,
+    RingCentralConnector,
+    TelephonyConnector,
+    TelephonyUnavailableError,
+)
 
 __all__ = [
     "Address",
@@ -34,6 +41,7 @@ __all__ = [
     "CustomerDetail",
     "Equipment",
     "Estimate",
+    "InboundCall",
     "InventoryConnector",
     "InventoryUnavailableError",
     "Invoice",
@@ -42,15 +50,22 @@ __all__ = [
     "MaterialPricing",
     "MockCrmConnector",
     "MockInventoryConnector",
+    "MockTelephonyConnector",
     "PlyConnector",
+    "RingCentralConnector",
     "ServiceFusionConnector",
     "StockLocation",
+    "TelephonyConnector",
+    "TelephonyUnavailableError",
     "build_crm",
     "build_inventory",
+    "build_telephony",
     "get_crm",
     "get_inventory",
+    "get_telephony",
     "reset_crm",
     "reset_inventory",
+    "reset_telephony",
 ]
 
 _crm: CrmConnector | None = None
@@ -96,3 +111,24 @@ def get_inventory() -> InventoryConnector:
 def reset_inventory() -> None:
     global _inventory
     _inventory = None
+
+
+_telephony: TelephonyConnector | None = None
+
+
+def build_telephony(settings: Settings) -> TelephonyConnector:
+    if settings.telephony_provider == "ringcentral":
+        return RingCentralConnector(settings.ringcentral_verification_token or "")
+    return MockTelephonyConnector()
+
+
+def get_telephony() -> TelephonyConnector:
+    global _telephony
+    if _telephony is None:
+        _telephony = build_telephony(get_settings())
+    return _telephony
+
+
+def reset_telephony() -> None:
+    global _telephony
+    _telephony = None

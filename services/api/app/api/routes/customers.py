@@ -34,7 +34,13 @@ router = APIRouter(prefix="/customers", tags=["customers"])
 read = [require(Permission.CUSTOMERS_READ)]
 
 
-def _summary(customer: Customer) -> CustomerSummary:
+def summary_out(customer: Customer) -> CustomerSummary:
+    """Public because the caller-lookup route builds the same shape.
+
+    A screen pop that rendered a customer slightly differently from the search
+    page would be two truths about one record, and the difference would show up
+    as a bug report about the wrong one.
+    """
     return CustomerSummary(
         id=customer.id,
         name=customer.name,
@@ -64,7 +70,7 @@ async def search_customers(
         resource_type="query",
         detail={"query": q[:120], "results": len(matches)},
     )
-    return [_summary(customer) for customer in matches]
+    return [summary_out(customer) for customer in matches]
 
 
 @router.get("/{customer_id}", response_model=CustomerDetailOut, dependencies=read)
@@ -84,8 +90,12 @@ async def get_customer(customer_id: str, principal: PrincipalDep) -> CustomerDet
         detail={"name": detail.customer.name},
     )
 
+    return detail_out(detail)
+
+
+def detail_out(detail: CustomerDetail) -> CustomerDetailOut:
     return CustomerDetailOut(
-        customer=_summary(detail.customer),
+        customer=summary_out(detail.customer),
         equipment=[EquipmentOut.model_validate(item) for item in detail.equipment],
         jobs=[JobOut.model_validate(item) for item in detail.jobs],
         estimates=[EstimateOut.model_validate(item) for item in detail.estimates],

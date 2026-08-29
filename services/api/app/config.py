@@ -58,6 +58,14 @@ class Settings(BaseSettings):
     inventory_provider: Literal["mock", "ply"] = "mock"
     ply_api_key: str | None = None
 
+    # The phone system is the one connector the outside world calls, so its
+    # credential is a verification secret rather than an API key. RingCentral
+    # hands the token back on every delivery; see app/connectors/telephony.py.
+    # The mock generates its own per process, which is why there is no setting
+    # for it — a demo secret in a settings file is a secret somebody commits.
+    telephony_provider: Literal["mock", "ringcentral"] = "mock"
+    ringcentral_verification_token: str | None = None
+
     # --- Agent --------------------------------------------------------------
     # Where "today" is. An assistant asked for the date has to answer in the
     # business's timezone, not the server's — a container in another region

@@ -46,15 +46,24 @@ def _isolated_database(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Itera
     # Imported here rather than at module scope: `get_settings` is cached, and
     # the cache has to be cleared after the environment is set, not before.
     from app.config import get_settings
+    from app.connectors import reset_telephony
     from app.rag.embed import reset_embedding_provider
+    from app.realtime.hub import reset_call_hub
 
     get_settings.cache_clear()
     reset_throttle()
     reset_embedding_provider()
+    # Both are process state: the mock phone system generates its verification
+    # token once, and the hub holds open sockets. A test that inherited either
+    # from the one before it would pass or fail on the order it ran in.
+    reset_telephony()
+    reset_call_hub()
     yield
     get_settings.cache_clear()
     reset_throttle()
     reset_embedding_provider()
+    reset_telephony()
+    reset_call_hub()
 
 
 @pytest_asyncio.fixture(autouse=True)

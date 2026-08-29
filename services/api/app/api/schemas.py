@@ -278,6 +278,51 @@ class MaterialOut(Schema):
     pricing: MaterialPricingOut | None = None
 
 
+class InboundCallOut(Schema):
+    call_id: str
+    from_number: str
+    to_number: str
+    received_at: str
+
+
+class ScreenPopOut(Schema):
+    """What lands on the screen when the phone rings.
+
+    Three shapes in one message, because three things can be true and the
+    person answering has to be able to tell them apart at a glance:
+
+    `matches` empty — nobody in the CRM has this number. A new customer, or a
+    withheld number. The pop still appears; the number is the useful part.
+
+    `matches` of one, with `detail` filled in — the ordinary case, and the
+    whole feature. Equipment, history and notes are on screen before the
+    handset reaches an ear.
+
+    `matches` of more than one, `detail` null — two accounts share this number.
+    Nothing is opened, because opening the wrong one is worse than opening
+    none: a wrong record does not look uncertain while it is being read aloud.
+    """
+
+    call: InboundCallOut
+    matches: list[CustomerSummary]
+    # Trimmed to the last few jobs. A screen pop is read in the seconds before
+    # somebody says hello, and a full history is a scroll bar in that window.
+    detail: CustomerDetailOut | None = None
+
+
+class CallDemoNumber(Schema):
+    number: str
+    label: str
+
+
+class CallDemoOut(Schema):
+    """Demo mode only. See `app/api/routes/calls.py`."""
+
+    token: str
+    header: str
+    numbers: list[CallDemoNumber]
+
+
 class HealthResponse(Schema):
     status: str
     demo_mode: bool

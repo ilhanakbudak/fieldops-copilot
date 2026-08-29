@@ -1,5 +1,6 @@
 import type {
   ApiErrorBody,
+  CallDemo,
   CreateUserRequest,
   CustomerRecord,
   CustomerSummary,
@@ -119,6 +120,10 @@ export const api = {
 
   findMaterials: (query: string) =>
     request<Material[]>(`/inventory?q=${encodeURIComponent(query)}`),
+
+  /** Demo mode only, and signed in: the token forges a screen pop for anybody
+   *  who holds it. See services/api/app/api/routes/calls.py. */
+  callDemo: () => request<CallDemo>("/calls/demo"),
 
   users: () => request<UserSummary[]>("/admin/users"),
 
