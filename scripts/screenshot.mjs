@@ -26,7 +26,7 @@ const CHROME =
 const SHOTS = [
   { name: "sign-in", path: "/sign-in", width: 1280, height: 860, as: null },
   { name: "chat", path: "/chat", width: 1440, height: 1000, as: "tech@example.com", ask: "What does error code E-04 mean?" },
-  { name: "chat-agent", path: "/chat", width: 1440, height: 900, as: "office@example.com", ask: "What is today's date?", then: "What did we install for Priya Raman?" },
+  { name: "chat-agent", path: "/chat", width: 1440, height: 980, as: "office@example.com", ask: "What is today's date?", then: "What did we install for Priya Raman?", expandTools: true },
   { name: "chat-declined", path: "/chat", width: 1440, height: 640, as: "sales@example.com", ask: "What does error code E-04 mean?" },
   { name: "customers", path: "/customers", width: 1440, height: 1080, as: "office@example.com", type: "Priya Raman" },
   { name: "inventory", path: "/inventory", width: 1440, height: 900, as: "tech@example.com", type: "1-inch PEX ball valve" },
@@ -35,6 +35,7 @@ const SHOTS = [
   // a webhook and waits for it to come back down the socket.
   { name: "call-screen-pop", path: "/call", width: 1440, height: 780, as: "office@example.com", ring: 0 },
   { name: "call-ambiguous", path: "/call", width: 1440, height: 620, as: "office@example.com", ring: 1 },
+  { name: "call-assist", path: "/call", width: 1440, height: 820, as: "office@example.com", assistMs: 11000 },
   { name: "knowledge", path: "/knowledge", width: 1440, height: 900, as: "admin@example.com" },
   { name: "retrieval-technician", path: "/search", width: 1440, height: 900, as: "tech@example.com", search: "What does error code E-04 mean?" },
   { name: "chat-tablet", path: "/chat", width: 834, height: 900, as: "tech@example.com", ask: "What does error code E-04 mean?" },
@@ -143,6 +144,37 @@ async function main() {
         });
         await sleep(600);
       }
+      await sleep(600);
+    }
+
+    if (shot.expandTools) {
+      // The trail is collapsed until asked, which is right on the page and
+      // wrong in a screenshot whose point is what came back from the tool.
+      await send("Runtime.evaluate", {
+        awaitPromise: true,
+        expression: `(async () => {
+          document
+            .querySelectorAll('button[aria-expanded="false"]')
+            .forEach((button) => button.click());
+          await new Promise((resolve) => setTimeout(resolve, 400));
+        })()`,
+      });
+      await sleep(400);
+    }
+
+    if (shot.assistMs) {
+      await send("Runtime.evaluate", {
+        awaitPromise: true,
+        expression: `(async () => {
+          const button = [...document.querySelectorAll("button")]
+            .find((element) => element.textContent.trim() === "Start a call");
+          button?.click();
+          await new Promise((resolve) => setTimeout(resolve, ${shot.assistMs}));
+          document.querySelector('section[aria-label="Live call assistance"]')
+            ?.scrollIntoView({ block: "start" });
+          await new Promise((resolve) => setTimeout(resolve, 600));
+        })()`,
+      });
       await sleep(600);
     }
 

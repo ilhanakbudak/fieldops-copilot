@@ -170,3 +170,183 @@
   font-size: var(--text-sm);
   color: var(--text-muted);
 }
+
+/* --- Live assistance ------------------------------------------------------ */
+
+.assist {
+  margin-top: var(--space-6);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  overflow: hidden;
+}
+
+.assistBar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--border);
+  background: var(--surface-sunken);
+}
+
+.assistBar .status { margin-right: auto; }
+
+.assistIdle {
+  margin: 0;
+  padding: var(--space-5);
+  max-width: 60ch;
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+  line-height: 1.6;
+}
+
+.column {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  padding: var(--space-4);
+}
+
+.columnTitle {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-3);
+  margin: 0 0 var(--space-3);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  color: var(--text-tertiary);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.skipped {
+  margin-left: auto;
+  font-weight: 400;
+  text-transform: none;
+  letter-spacing: 0;
+  color: var(--text-tertiary);
+}
+
+/* A fixed height, not a growing one: the two columns are read side by side and
+   a transcript that pushes the page down takes the suggestions with it. Both
+   scroll independently, which is what a person watching one and glancing at the
+   other actually needs. */
+.transcript,
+.suggestions {
+  min-height: 0;
+  height: clamp(18rem, 42vh, 32rem);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.transcript { display: grid; align-content: start; gap: var(--space-2); }
+
+.line {
+  margin: 0;
+  font-size: var(--text-sm);
+  line-height: 1.55;
+  color: var(--text);
+}
+
+.lineAgent { color: var(--text-secondary); }
+
+.who {
+  display: inline-block;
+  min-width: 3.5rem;
+  margin-right: var(--space-2);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  color: var(--text-tertiary);
+}
+
+.linePartial { color: var(--text-tertiary); font-style: italic; }
+
+.caret {
+  display: inline-block;
+  width: 2px;
+  height: 0.9em;
+  margin-left: 2px;
+  vertical-align: -1px;
+  background: var(--accent-500);
+  animation: blink 1s step-end infinite;
+}
+
+@keyframes blink { 50% { opacity: 0; } }
+
+.suggestions { display: grid; align-content: start; gap: var(--space-3); }
+
+.suggestion {
+  padding: var(--space-3) var(--space-4);
+  background: var(--surface-sunken);
+  border: 1px solid var(--border);
+  border-left: 2px solid var(--accent-500);
+  border-radius: var(--radius);
+}
+
+.suggestionHead {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-2);
+}
+
+.reason {
+  font-size: var(--text-xs);
+  color: var(--text-tertiary);
+  text-transform: lowercase;
+}
+
+.suggestionText {
+  font-size: var(--text-md);
+  line-height: 1.6;
+  color: var(--text);
+}
+
+.suggestionText :global(p) { margin: 0 0 var(--space-2); }
+.suggestionText :global(p:last-child) { margin-bottom: 0; }
+
+.suggestionText :global(ul),
+.suggestionText :global(ol) {
+  margin: 0 0 var(--space-2);
+  padding-left: var(--space-5);
+  display: grid;
+  gap: 2px;
+}
+
+.suggestionText :global(li:last-child) { margin-bottom: 0; }
+
+.suggestionCitations {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+}
+
+.suggestionCitation {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  max-width: 100%;
+  padding: 2px var(--space-2);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+}
+
+.marker { font-family: var(--font-mono); color: var(--accent-600); }
+
+.quiet {
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--text-tertiary);
+  max-width: 40ch;
+  line-height: 1.6;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .caret { animation: none; }
+}

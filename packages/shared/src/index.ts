@@ -201,6 +201,20 @@ export interface TokenUsage {
 }
 
 /** One tool the agent decided to run, and what came back. */
+/**
+ * One labelled value a tool returned.
+ *
+ * `group` is one level of nesting — a "source" and a "target", say — and a row
+ * carries one or the other, never both. Produced by `app/agent/render.py` from
+ * whatever JSON the server sent, so nothing on this side has to know the field
+ * names any particular tool server chose.
+ */
+export interface ResultRow {
+  label: string;
+  value?: string;
+  group?: Array<{ label: string; value: string }>;
+}
+
 export interface ToolRun {
   id: string;
   name: string;
@@ -215,6 +229,10 @@ export interface ToolRun {
     candidates?: number;
     retrievalMs?: number;
     reranker?: string;
+    /** MCP tools: which server answered, and what it said. */
+    server?: string;
+    tool?: string;
+    rows?: ResultRow[];
   };
 }
 
@@ -316,6 +334,52 @@ export interface ScreenPop {
   detail: CustomerRecord | null;
 }
 
+/* --- Live call assistance -------------------------------------------------- */
+
+export interface Utterance {
+  speaker: "caller" | "agent";
+  text: string;
+}
+
+/**
+ * One thing the assistant is offering to say.
+ *
+ * `reason` is the classifier's own words for why it acted — eight words at
+ * most, shown so the employee can tell at a glance whether it understood the
+ * question before they read the answer to a customer.
+ *
+ * `streaming` is false exactly once per suggestion, on the last message. The
+ * whole text arrives each time rather than a delta, because citation markers
+ * are resolved server-side and an invented one is *removed* — a delta would
+ * sometimes have to unsay something already on screen.
+ */
+export interface CallSuggestion {
+  id: string;
+  query: string;
+  reason: string;
+  text: string;
+  streaming: boolean;
+  citations: Citation[];
+}
+
+/** A moment the assistant looked and decided there was nothing to answer. */
+export interface SkippedUtterance {
+  id: string;
+  reason: string;
+}
+
+export interface TranscriptFragment {
+  delayMs: number;
+  speaker: "caller" | "agent";
+  text: string;
+  final: boolean;
+}
+
+export interface CallScript {
+  customerId: string | null;
+  fragments: TranscriptFragment[];
+}
+
 export interface CallDemoNumber {
   number: string;
   label: string;
@@ -326,6 +390,9 @@ export interface CallDemo {
   token: string;
   header: string;
   numbers: CallDemoNumber[];
+  /** Replayed by the browser, so the transcript reaches the assist socket the
+   *  way a transcription service would rather than by a server-side shortcut. */
+  script: CallScript | null;
 }
 
 /* --- Inventory ------------------------------------------------------------ */

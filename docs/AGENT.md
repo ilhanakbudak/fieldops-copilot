@@ -56,6 +56,47 @@ MCP_SERVERS='[{"name":"time","command":"python","args":["-m","mcp_server_time"]}
               {"name":"docs","command":"npx","args":["-y","@modelcontextprotocol/server-filesystem","/srv/docs"]}]'
 ```
 
+### What comes back is translated, not forwarded
+
+Every tool in this repository returns prose for the model and structure for the
+interface, deliberately: a model handed JSON reproduces its shape in the answer,
+and "the customer's equipment array contains two objects" is not something to
+read out to somebody on the phone.
+
+MCP servers do not know about that split. A great many of them — the official
+time server included — return a JSON document as their text content:
+
+```json
+{"timezone": "America/New_York", "datetime": "2026-08-29T05:37:20-04:00",
+ "day_of_week": "Saturday", "is_dst": true}
+```
+
+Forwarding that hands the model a payload to paraphrase and the interface a code
+block to render, which is the one thing the built-in tools were careful not to
+do. So the client parses the response once and produces both halves from it —
+prose for the model, labelled rows for the screen:
+
+```
+Timezone: America/New_York
+Datetime: Saturday 29 August 2026 at 05:37 (UTC-04:00)
+Day of week: Saturday
+DST: yes
+```
+
+**This is deliberately generic.** There is no branch in the client that knows
+what a timezone is. The whole argument for speaking a protocol rather than
+writing bespoke integrations collapses the moment it needs a special case per
+server, so `app/agent/render.py` is a set of shape heuristics — a key is a
+label, an ISO timestamp is a date, a nested object is a section — and nothing
+about any particular tool. `structuredContent` is preferred where a server sends
+it; text is parsed where one does not, which is most of the ecosystem today.
+
+The heuristics are guesses and are allowed to be wrong, so they keep their hands
+off anything they cannot improve. `NG-4200`, `1.2.3`, `2026-08` and `+7.0h` pass
+through exactly as they arrived — a looser date pattern would reformat every
+part number in the corpus into nonsense. Being unhelpful is an acceptable
+failure; being wrong about what a value means is not.
+
 ---
 
 ## Four constraints on the loop
@@ -103,6 +144,16 @@ bad decision and a bad execution.
 **Structured results never reach the model.** A tool returns prose for the model
 and a payload for the interface. Keeping them separate is what stops an
 interface change from silently altering what the model is told.
+
+A trail entry that came back with data expands to show it — the same
+chip-then-body shape as a citation, because it answers the same question:
+*where did that come from*. A second interaction idiom for the same question is
+one the reader has to learn twice.
+
+**Every tool call is audited**, in `_invoke` — the one function every call
+passes through, built-in, MCP, and the ones the model invents. That placement is
+the point: a tool added later cannot forget to audit itself, because it was
+never the tool's job. See [SECURITY.md](SECURITY.md).
 
 ---
 

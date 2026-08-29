@@ -35,8 +35,17 @@ __pycache__/
 /uploads/
 /storage/
 /models/
+# Where the credential-free fallback actually puts its database. Named in full
+# rather than as a bare `data/`, for the reason above.
+/services/api/data/
 *.db
 *.sqlite3
+# SQLite's write-ahead log and shared-memory files. `*.db` does not match them,
+# which is how they reached a commit once.
+*.db-shm
+*.db-wal
+*.sqlite3-shm
+*.sqlite3-wal
 .fastembed_cache/
 
 # Coverage & logs

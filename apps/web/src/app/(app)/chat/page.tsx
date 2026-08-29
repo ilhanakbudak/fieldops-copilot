@@ -7,8 +7,9 @@ import { askStream } from "@/lib/chat";
 import { useConversations } from "@/lib/conversations";
 import { useSession } from "@/lib/session";
 import { Markdown } from "@/components/Markdown";
+import { ResultRows } from "@/components/ResultRows";
 import { Button, Input } from "@/components/ui";
-import { CopyIcon, PencilIcon } from "@/components/icons";
+import { ChevronIcon, CopyIcon, PencilIcon } from "@/components/icons";
 import styles from "./chat.module.css";
 
 type Turn = {
@@ -44,6 +45,48 @@ const TOOL_LABELS: Record<string, string> = {
 
 function label(name: string): string {
   return TOOL_LABELS[name] ?? name.replace(/^mcp_[a-z0-9]+_/, "").replace(/_/g, " ");
+}
+
+/**
+ * One line in the "what happened" trail.
+ *
+ * A step that came back with data expands to show it; one that did not stays a
+ * line. The same chip-then-body shape as a citation, because it answers the
+ * same question — *where did that come from* — and a second interaction idiom
+ * for the same question is one the reader has to learn twice.
+ */
+function ToolStep({ tool }: { tool: ToolRun }) {
+  const [open, setOpen] = useState(false);
+  const rows = tool.data?.rows ?? [];
+
+  if (rows.length === 0) {
+    return (
+      <span className={styles.step}>
+        <span className={`${styles.stepDot} ${tool.ok ? "" : styles.stepDotFailed}`} aria-hidden />
+        {label(tool.name)} — {tool.summary}
+      </span>
+    );
+  }
+
+  return (
+    <div className={styles.stepGroup}>
+      <button
+        type="button"
+        className={`${styles.step} ${styles.stepButton} ${open ? styles.stepOpen : ""}`}
+        onClick={() => setOpen(!open)}
+        aria-expanded={open}
+      >
+        <span className={`${styles.stepDot} ${tool.ok ? "" : styles.stepDotFailed}`} aria-hidden />
+        {label(tool.name)} — {tool.summary}
+        <ChevronIcon className={`${styles.stepChevron} ${open ? styles.stepChevronOpen : ""}`} />
+      </button>
+      {open && (
+        <div className={styles.stepBody}>
+          <ResultRows rows={rows} />
+        </div>
+      )}
+    </div>
+  );
 }
 
 function blankTurn(question: string): Turn {
@@ -390,13 +433,7 @@ function TurnView({
           {(turn.tools.length > 0 || turn.running.length > 0) && (
             <div className={styles.steps}>
               {turn.tools.map((tool, index) => (
-                <span className={styles.step} key={`${tool.name}-${index}`}>
-                  <span
-                    className={`${styles.stepDot} ${tool.ok ? "" : styles.stepDotFailed}`}
-                    aria-hidden
-                  />
-                  {label(tool.name)} — {tool.summary}
-                </span>
+                <ToolStep key={`${tool.name}-${index}`} tool={tool} />
               ))}
               {turn.running.map((name, index) => (
                 <span className={styles.step} key={`running-${index}`}>

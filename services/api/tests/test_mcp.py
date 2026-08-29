@@ -77,7 +77,19 @@ async def test_the_official_time_server_connects_and_answers() -> None:
         )
 
         assert result.ok
-        assert "datetime" in result.content
+        # Prose, not the JSON document the server actually sent. The built-in
+        # tools all hand the model sentences; an MCP tool that handed it a
+        # payload would be the one place the model has to parse rather than
+        # read. See app/agent/render.py.
+        assert "{" not in result.content
+        assert "America/New_York" in result.content
+        assert "day_of_week" not in result.content
+
+        # And the same answer as labelled rows for the interface, so the trail
+        # can show what came back without knowing this server's field names.
+        labels = {row["label"] for row in result.data["rows"]}
+        assert {"Timezone", "Datetime", "Day of week"} <= labels
+        assert "time MCP server" in result.summary
     finally:
         await registry.stop()
 

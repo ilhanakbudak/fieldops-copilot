@@ -8,7 +8,8 @@ import { defineConfig } from "vitest/config";
  * Not every screen — a test that asserts a heading renders is a test that fails
  * when somebody improves the wording. These cover the administration screen,
  * where the interesting behaviour is *refusals*: the guards that stop an
- * administrator locking themselves, or everyone, out.
+ * administrator locking themselves, or everyone, out — and the resizable split,
+ * where it is the keyboard path, which is the one nobody notices is broken.
  */
 export default defineConfig({
   plugins: [react()],

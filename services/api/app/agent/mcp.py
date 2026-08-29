@@ -20,6 +20,16 @@ the model calls the clock and the retrieval pipeline never runs.
 handshake, costs the assistant those tools and nothing else. An internal
 assistant that cannot answer questions about its own manuals because an
 unrelated subprocess died would be a poor trade.
+
+**What comes back is translated, not forwarded.** Every tool in
+`app/agent/builtin/` returns prose for the model and structure for the
+interface, deliberately and for reasons written down there. MCP servers do not
+know about that split — a great many, including the time server, return a JSON
+document as their text content. Forwarding it would hand the model a payload to
+paraphrase and the interface a code block to render, which is the one thing the
+built-in tools were careful not to do. So the response is parsed once and both
+halves are produced from it. See `app/agent/render.py`, which is generic: there
+is no branch in this client that knows what a timezone is.
 """
 
 from __future__ import annotations
@@ -31,6 +41,7 @@ from contextlib import AsyncExitStack
 from dataclasses import dataclass
 from typing import Any
 
+from app.agent.render import fields, humanise, parse_json
 from app.agent.tools import ToolContext, ToolResult, failed
 from app.auth.rbac import Permission
 from app.config import Settings
@@ -171,15 +182,52 @@ class McpClient:
             logger.exception("mcp tool %s failed", name)
             return failed(f"The {self.server.name} tool could not be reached.")
 
+        return self._translate(name, response)
+
+    def _translate(self, name: str, response: Any) -> ToolResult:
+        """The server's answer, as prose for the model and rows for the screen.
+
+        `structuredContent` is where a current server puts its result and is
+        preferred when present. Falling back to parsing the text blocks is not
+        a workaround: it is what the servers in the wild actually do today, the
+        official time server included, and a client that only read the newer
+        field would show a JSON blob for most of the ecosystem.
+        """
         text = "\n".join(
             block.text for block in response.content if getattr(block, "type", None) == "text"
         )
+        document = getattr(response, "structuredContent", None) or parse_json(text)
+        ok = not getattr(response, "isError", False)
+
+        if document is None:
+            # Already prose. Some servers answer in a sentence, which needs
+            # nothing from us and must not be mangled by trying.
+            return ToolResult(
+                content=text or "The tool returned nothing.",
+                summary=self._summary(name, ok),
+                data={"server": self.server.name, "tool": name, "rows": []},
+                ok=ok,
+            )
+
         return ToolResult(
-            content=text or "The tool returned nothing.",
-            summary=f"Called {name} on the {self.server.name} MCP server",
-            data={"server": self.server.name, "tool": name},
-            ok=not getattr(response, "isError", False),
+            content=humanise(document) or text or "The tool returned nothing.",
+            summary=self._summary(name, ok),
+            data={
+                "server": self.server.name,
+                "tool": name,
+                # Labelled rows rather than the raw document: the interface
+                # renders these directly, so it never has to know the shape any
+                # particular server chose.
+                "rows": fields(document),
+            },
+            ok=ok,
         )
+
+    def _summary(self, name: str, ok: bool) -> str:
+        pretty = name.replace("_", " ")
+        if not ok:
+            return f"{pretty} failed on the {self.server.name} server"
+        return f"{pretty} · {self.server.name} MCP server"
 
     async def close(self) -> None:
         if self._stack is not None:

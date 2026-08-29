@@ -1,0 +1,42 @@
+{
+  "$comment": [
+    "A scripted call, for demonstrating live assistance without a telephone.",
+    "",
+    "Replayed by the browser at these delays, so the transcript arrives over the",
+    "same WebSocket a transcription service would use and every stage runs for",
+    "real — utterance assembly, the pause detector, the actionability",
+    "classifier, retrieval and generation. Only the microphone is fake.",
+    "",
+    "It is written to exercise the decisions rather than to flatter them:",
+    "",
+    "  The opening lines are a greeting and an address. The classifier should",
+    "  refuse all of them, and the screen should say so — an assistant that",
+    "  goes quiet is indistinguishable from one that has crashed.",
+    "",
+    "  The problem arrives across two utterances with a breath in between.",
+    "  Answering the first alone retrieves nothing useful; the pause window is",
+    "  what holds them together.",
+    "",
+    "  The follow-up is a pronoun with no antecedent of its own. It is",
+    "  answerable only from the lines above it, which is what the context",
+    "  window is for.",
+    "",
+    "  `delayMs` is the pause before the fragment is sent. Partials arrive fast",
+    "  and finals are followed by a real pause, because a script that never",
+    "  paused would never trigger anything."
+  ],
+  "customerId": "NG-0876",
+  "fragments": [
+    { "delayMs": 400, "speaker": "agent", "text": "Northgate Water, this is Marta.", "final": true },
+    { "delayMs": 900, "speaker": "caller", "text": "Hi, yes, it's", "final": false },
+    { "delayMs": 500, "speaker": "caller", "text": "Hi, yes, it's Priya Raman on Alderway Road.", "final": true },
+    { "delayMs": 1400, "speaker": "agent", "text": "Hello — I have you here. How can I help?", "final": true },
+    { "delayMs": 1500, "speaker": "caller", "text": "So the water", "final": false },
+    { "delayMs": 400, "speaker": "caller", "text": "So the water's been warm", "final": false },
+    { "delayMs": 500, "speaker": "caller", "text": "So the water's been warm at the kitchen tap,", "final": true },
+    { "delayMs": 450, "speaker": "caller", "text": "ever since you put", "final": false },
+    { "delayMs": 500, "speaker": "caller", "text": "ever since you put the radon system in.", "final": true },
+    { "delayMs": 3200, "speaker": "caller", "text": "Is that meant to happen?", "final": true },
+    { "delayMs": 4500, "speaker": "caller", "text": "And how long does it usually last?", "final": true }
+  ]
+}

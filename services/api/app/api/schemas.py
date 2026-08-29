@@ -315,12 +315,29 @@ class CallDemoNumber(Schema):
     label: str
 
 
+class TranscriptFragment(Schema):
+    """One piece of a scripted call, and the pause before it is sent."""
+
+    delay_ms: int
+    speaker: str
+    text: str
+    final: bool
+
+
+class CallScript(Schema):
+    customer_id: str | None = None
+    fragments: list[TranscriptFragment]
+
+
 class CallDemoOut(Schema):
     """Demo mode only. See `app/api/routes/calls.py`."""
 
     token: str
     header: str
     numbers: list[CallDemoNumber]
+    # Replayed by the browser, so the transcript reaches the assist socket the
+    # way a transcription service would rather than by a shortcut on the server.
+    script: CallScript | None = None
 
 
 class HealthResponse(Schema):

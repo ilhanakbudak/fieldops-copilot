@@ -1,0 +1,83 @@
+.split {
+  display: grid;
+  /* The divider is a real track, so the panes cannot overlap it and a drag
+     does not have to account for its width. `minmax(0, …)` on both panes
+     because a grid track sizes to content by default, and one long unbroken
+     line in the transcript would otherwise push the divider off-screen. */
+  grid-template-columns: minmax(0, var(--split, 50%)) auto minmax(0, 1fr);
+  align-items: stretch;
+  gap: 0;
+  min-height: 0;
+}
+
+.pane {
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.divider {
+  position: relative;
+  width: var(--space-4);
+  cursor: col-resize;
+  background: none;
+  border: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  touch-action: none;
+}
+
+/* The hairline. A full-width hit area with a hairline drawn inside it: a
+   4px-wide divider is honest about where the line is and miserable to grab. */
+.divider::before {
+  content: "";
+  width: 1px;
+  height: 100%;
+  background: var(--border);
+  transition: background var(--transition), width var(--transition);
+}
+
+.divider:hover::before,
+.divider:focus-visible::before,
+.dragging .divider::before {
+  width: 2px;
+  background: var(--accent-500);
+}
+
+.divider:focus-visible {
+  outline: 2px solid var(--accent-500);
+  outline-offset: -2px;
+  border-radius: var(--radius-sm);
+}
+
+.grip {
+  position: absolute;
+  width: 3px;
+  height: 26px;
+  border-radius: var(--radius-full);
+  background: var(--border-strong);
+  opacity: 0;
+  transition: opacity var(--transition);
+}
+
+.divider:hover .grip,
+.divider:focus-visible .grip { opacity: 1; }
+
+/* While dragging, the pointer is outside the divider half the time. Without
+   this the cursor flickers and text selects behind the drag. */
+.dragging { cursor: col-resize; user-select: none; }
+.dragging * { pointer-events: none; }
+
+@media (max-width: 899px) {
+  .split {
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--space-5);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .divider::before,
+  .grip { transition: none; }
+}

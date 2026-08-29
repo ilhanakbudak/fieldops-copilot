@@ -229,6 +229,50 @@
 
 .stepDotFailed { background: var(--danger-500); }
 
+/* A step that came back with data expands to show it — the same chip-then-body
+   shape as a citation, because it answers the same question. */
+
+.stepGroup {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.stepButton {
+  width: fit-content;
+  max-width: 100%;
+  padding: 0;
+  background: none;
+  border: none;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  text-align: left;
+  transition: color var(--transition);
+}
+
+.stepButton:hover,
+.stepOpen { color: var(--text-secondary); }
+
+.stepChevron {
+  flex: none;
+  opacity: 0.6;
+  transition: transform var(--transition);
+}
+
+.stepChevronOpen { transform: rotate(180deg); }
+
+.stepBody {
+  padding: var(--space-3) var(--space-4);
+  background: var(--surface-sunken);
+  border: 1px solid var(--border);
+  border-left: 2px solid var(--accent-500);
+  border-radius: var(--radius);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .stepChevron { transition: none; }
+}
+
 @keyframes pulse {
   50% { opacity: 0.25; }
 }

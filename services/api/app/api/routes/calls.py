@@ -8,9 +8,15 @@ phone system POSTs to it, at a moment nobody chose, with a body that is
 attacker-controlled until the connector proves otherwise. Everything below about
 it follows from that one fact.
 
-`GET /calls/stream` is a WebSocket the office holds open. It is authenticated by
-the same session cookie as every other route and gated on `calls:assist`, which
-office staff and administrators hold and technicians and salespeople do not.
+`GET /calls/stream` is a WebSocket the office holds open, waiting for the phone
+to ring. It is authenticated by the same session cookie as every other route and
+gated on `calls:assist`, which office staff and administrators hold and
+technicians and salespeople do not.
+
+`GET /calls/assist` is the other half: a WebSocket carrying a live transcript in
+and suggestions out, for the duration of one call. Same gate. See
+`app/realtime/assist.py` for why most of what it is sent is deliberately
+ignored.
 
 ## The webhook answers the same way whatever happens
 
@@ -49,8 +55,12 @@ be there.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import logging
+import time
+from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, Request, Response, WebSocket, WebSocketDisconnect, status
@@ -61,11 +71,13 @@ from app.api.routes.customers import detail_out, summary_out
 from app.api.schemas import (
     CallDemoNumber,
     CallDemoOut,
+    CallScript,
     CustomerDetailOut,
     InboundCallOut,
     ScreenPopOut,
+    TranscriptFragment,
 )
-from app.audit import DENIED, ERROR, SUCCESS, audit
+from app.audit import DENIED, ERROR, SUCCESS, audit, record_usage
 from app.auth.rbac import Permission, Principal
 from app.auth.service import get_throttle
 from app.auth.sessions import resolve_session
@@ -79,7 +91,13 @@ from app.connectors import (
 )
 from app.core.context import attach_principal
 from app.core.errors import NotFoundError
+from app.core.ids import new_id
+from app.db.engine import session_scope
+from app.llm import get_llm_provider
+from app.llm.pricing import cost_usd
 from app.realtime import get_call_hub
+from app.realtime.assist import Suggestion, classify, suggest
+from app.realtime.transcript import Speaker, TranscriptBuffer
 
 logger = logging.getLogger("fieldops.calls")
 
@@ -231,7 +249,43 @@ async def demo_calls(settings: SettingsDep) -> CallDemoOut:
     numbers = [
         CallDemoNumber(number=number, label=label) for number, label in await _demo_numbers(crm)
     ]
-    return CallDemoOut(token=connector.token, header="X-FieldOps-Call-Token", numbers=numbers)
+    return CallDemoOut(
+        token=connector.token,
+        header="X-FieldOps-Call-Token",
+        numbers=numbers,
+        script=_call_script(),
+    )
+
+
+# app/api/routes/ → app → services/api → services → repository root
+CALL_SCRIPT = Path(__file__).resolve().parents[5] / "fixtures" / "calls" / "warm-water.json"
+
+
+def _call_script() -> CallScript | None:
+    """The scripted call, for demonstrating live assistance without a phone.
+
+    Read per request rather than cached: it is one small file, only in demo
+    mode, and editing it and reloading the page is how anybody would want to
+    try a different conversation.
+    """
+    try:
+        payload = json.loads(CALL_SCRIPT.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        logger.warning("no call script at %s", CALL_SCRIPT)
+        return None
+
+    return CallScript(
+        customer_id=payload.get("customerId"),
+        fragments=[
+            TranscriptFragment(
+                delay_ms=int(item.get("delayMs", 500)),
+                speaker="agent" if item.get("speaker") == "agent" else "caller",
+                text=str(item.get("text", "")),
+                final=bool(item.get("final")),
+            )
+            for item in payload.get("fragments", [])
+        ],
+    )
 
 
 async def _demo_numbers(crm: Any) -> list[tuple[str, str]]:
@@ -305,6 +359,268 @@ async def stream_calls(websocket: WebSocket, db: DbDep, settings: SettingsDep) -
         except RuntimeError:
             # The socket closed underneath the send. Ordinary on a page reload.
             return
+
+
+# --- Live call assistance ---------------------------------------------------
+
+
+@router.websocket("/assist")
+async def assist_call(websocket: WebSocket, db: DbDep, settings: SettingsDep) -> None:
+    """Transcript in, suggestions out, for one call.
+
+    The client sends `{"type": "transcript", speaker, text, final}` as words
+    arrive, and optionally `{"type": "customer", "customerId": …}` once the
+    screen pop has been resolved to an account.
+
+    Nothing in what it sends decides what may be searched. The principal comes
+    from the session cookie that opened this socket and is passed to `retrieve`
+    unchanged — which matters more here than anywhere else in this application,
+    because half the words arriving are spoken by a member of the public.
+    """
+    await websocket.accept()
+
+    principal = await _principal_for(websocket, db, settings)
+    if principal is None or not principal.can(Permission.CALLS_ASSIST):
+        await websocket.close(
+            code=status.WS_1008_POLICY_VIOLATION,
+            reason="Sign in to continue." if principal is None else "Your role has no access.",
+        )
+        return
+
+    buffer = TranscriptBuffer(settle_seconds=settings.assist_settle_seconds)
+    session = _AssistSession(
+        websocket=websocket, principal=principal, settings=settings, buffer=buffer
+    )
+    await session.run()
+
+
+@dataclass
+class _AssistSession:
+    """One call's worth of listening.
+
+    A class rather than a loop with six locals because two things run
+    concurrently — reading the socket, and a timer that fires when the caller
+    stops talking — and they share the buffer between them.
+    """
+
+    websocket: WebSocket
+    principal: Principal
+    settings: Settings
+    buffer: TranscriptBuffer
+    customer: Any = None
+    suggestions: int = 0
+    started: float = field(default_factory=time.monotonic)
+
+    async def run(self) -> None:
+        await self.websocket.send_json({"type": "ready"})
+        watcher = asyncio.create_task(self._watch())
+        try:
+            while True:
+                message = await self.websocket.receive_json()
+                await self._handle(message)
+        except (WebSocketDisconnect, KeyError, ValueError, TypeError):
+            # A disconnect, or a client that sent something that is not the
+            # shape agreed above. Neither is worth a stack trace: the socket is
+            # closing either way and there is nobody left to tell.
+            pass
+        finally:
+            watcher.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await watcher
+            await self._record()
+
+    async def _handle(self, message: dict[str, Any]) -> None:
+        kind = message.get("type")
+
+        if kind == "transcript":
+            # Narrowed rather than trusted: this arrives over a socket and
+            # anything that is not the employee is the person on the phone.
+            speaker: Speaker = "agent" if message.get("speaker") == "agent" else "caller"
+            text = str(message.get("text") or "")
+            if message.get("final"):
+                utterance = self.buffer.add_final(speaker, text)
+                if utterance is not None:
+                    await self._send(
+                        {
+                            "type": "utterance",
+                            "speaker": utterance.speaker,
+                            "text": utterance.text,
+                        }
+                    )
+            else:
+                self.buffer.add_partial(speaker, text)
+                await self._send({"type": "partial", "speaker": speaker, "text": text})
+
+        elif kind == "customer":
+            await self._attach(str(message.get("customerId") or ""))
+
+    async def _attach(self, customer_id: str) -> None:
+        """Which account is on the line, once somebody has decided.
+
+        Sent by the client rather than looked up here, because with two accounts
+        on one number the answer is a person's judgement — see docs/CALLS.md —
+        and the screen pop is where that judgement is made.
+        """
+        if not customer_id:
+            self.customer = None
+            return
+        try:
+            self.customer = await get_crm().get_customer(customer_id)
+        except CrmUnavailableError:
+            logger.warning("could not attach customer %s to a call", customer_id)
+            return
+        if self.customer is not None:
+            await audit(
+                "call.assist.customer",
+                principal=self.principal,
+                resource_type="customer",
+                resource_id=customer_id,
+            )
+
+    async def _watch(self) -> None:
+        """Fire when the caller stops talking.
+
+        Polling rather than a timer reset on every fragment: a poll at a fifth
+        of the settle window is a handful of no-op wakeups a second and cannot
+        leak a task, and cancelling and recreating a timer per transcribed word
+        can.
+        """
+        tick = max(self.settings.assist_settle_seconds / 5, 0.05)
+        while True:
+            await asyncio.sleep(tick)
+            if not self.buffer.settled():
+                continue
+            try:
+                await self._consider()
+            except Exception:
+                # A failure here must not take the transcript down with it. The
+                # employee keeps their live transcript and loses a suggestion.
+                logger.exception("live assist failed on an utterance")
+                await self._send({"type": "assist_error"})
+
+    async def _consider(self) -> None:
+        pending = self.buffer.pending()
+        context = self.buffer.context()
+        newest = self.buffer.latest()
+        self.buffer.take()
+        if not pending:
+            return
+
+        if self.suggestions >= self.settings.assist_max_suggestions:
+            # Said once, on the ceiling, rather than silently going quiet.
+            if self.suggestions == self.settings.assist_max_suggestions:
+                self.suggestions += 1
+                await self._send({"type": "capped"})
+            return
+
+        llm = get_llm_provider()
+        # The window for resolving what was meant, the new lines for deciding
+        # whether to act. Deciding from the window would re-answer a problem
+        # every time the caller said anything after it.
+        verdict = await classify(context, llm, latest=newest)
+
+        if not verdict.actionable:
+            # Sent anyway. An assistant that goes quiet is indistinguishable
+            # from one that has crashed, and the employee is watching it.
+            await self._send({"type": "skipped", "reason": verdict.reason or "not a question"})
+            return
+
+        self.suggestions += 1
+        await self._send({"type": "thinking", "query": verdict.query, "reason": verdict.reason})
+
+        async with session_scope(self.principal) as db:
+            suggestion_id = new_id()
+            usage = verdict.usage
+            latest = None
+
+            async for suggestion in suggest(
+                db,
+                query=verdict.query,
+                reason=verdict.reason,
+                context=context,
+                principal=self.principal,
+                llm=llm,
+                settings=self.settings,
+                customer=self.customer,
+            ):
+                latest = suggestion
+                await self._send(_suggestion_out(suggestion_id, suggestion, streaming=True))
+
+            # A terminator, not a nicety. Without it neither the browser nor a
+            # test can tell a suggestion that is still arriving from one that
+            # has finished, and both end up waiting on a socket that has said
+            # everything it is going to say.
+            if latest is not None:
+                await self._send(_suggestion_out(suggestion_id, latest, streaming=False))
+
+        if latest is not None:
+            usage = usage + latest.usage
+            await record_usage(
+                feature="call_assist",
+                provider=llm.name,
+                model=llm.chat_model,
+                input_tokens=usage.input_tokens,
+                output_tokens=usage.output_tokens,
+                cached_input_tokens=usage.cached_input_tokens,
+                cost_usd=cost_usd(llm.chat_model, usage),
+                principal=self.principal,
+            )
+
+    async def _send(self, message: dict[str, Any]) -> None:
+        with contextlib.suppress(RuntimeError, WebSocketDisconnect):
+            await self.websocket.send_json(message)
+
+    async def _record(self) -> None:
+        """One audit line per call, when it ends.
+
+        Per suggestion would be noise — the model calls are already in
+        `usage_events`, priced. What the trail wants from a call is that it
+        happened, who listened, and how much of it the assistant answered.
+        """
+        await audit(
+            "call.assist",
+            principal=self.principal,
+            resource_type="customer" if self.customer else None,
+            resource_id=self.customer.customer.id if self.customer else None,
+            detail={
+                "utterances": len(self.buffer.utterances),
+                "suggestions": self.suggestions,
+                "seconds": round(time.monotonic() - self.started, 1),
+            },
+        )
+
+
+def _suggestion_out(
+    suggestion_id: str, suggestion: Suggestion, *, streaming: bool
+) -> dict[str, Any]:
+    """One suggestion on the wire.
+
+    The whole text every time rather than a delta: citation markers are
+    resolved server-side against the passages actually retrieved — an invented
+    one is *removed* — so a delta would sometimes have to unsay something the
+    browser had already drawn.
+    """
+    answer = suggestion.resolved()
+    return {
+        "type": "suggestion",
+        "id": suggestion_id,
+        "query": suggestion.query,
+        "reason": suggestion.reason,
+        "text": answer.text,
+        "streaming": streaming,
+        "citations": [_citation_out(citation) for citation in answer.citations],
+    }
+
+
+def _citation_out(citation: Any) -> dict[str, Any]:
+    return {
+        "marker": citation.marker,
+        "documentId": citation.document_id,
+        "documentTitle": citation.document_title,
+        "page": citation.page,
+        "section": citation.section,
+        "snippet": citation.snippet,
+    }
 
 
 async def _principal_for(websocket: WebSocket, db: Any, settings: Settings) -> Principal | None:

@@ -66,6 +66,22 @@ class Settings(BaseSettings):
     telephony_provider: Literal["mock", "ringcentral"] = "mock"
     ringcentral_verification_token: str | None = None
 
+    # --- Live call assistance -------------------------------------------------
+    # How long a pause after an utterance counts as the speaker having finished
+    # a thought. Short enough not to be felt, long enough to catch a breath —
+    # people talk in fragments, and answering each one separately produces
+    # flickering nonsense. See app/realtime/transcript.py.
+    assist_settle_seconds: float = Field(default=0.7, ge=0.1, le=5.0)
+
+    # Passages a suggestion is built from. Fewer than a chat answer gets: the
+    # employee is reading this with a customer on the line, and a suggestion
+    # that needs scrolling has already failed.
+    assist_top_k: int = Field(default=3, ge=1, le=10)
+
+    # A ceiling per call. A hold tone transcribed as speech, or a caller reading
+    # a manual aloud, would otherwise be an unbounded bill on one phone call.
+    assist_max_suggestions: int = Field(default=25, ge=1, le=200)
+
     # --- Agent --------------------------------------------------------------
     # Where "today" is. An assistant asked for the date has to answer in the
     # business's timezone, not the server's — a container in another region

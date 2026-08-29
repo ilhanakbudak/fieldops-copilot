@@ -1,7 +1,7 @@
 /**
  * Inline SVG rather than an icon package.
  *
- * Seven icons do not justify a dependency, a tree-shaking configuration and a
+ * A dozen icons do not justify a dependency, a tree-shaking configuration and a
  * licence to check — and inlined, they cost no extra request and inherit
  * `currentColor`, so an active nav item colours its icon without a second rule.
  */
@@ -143,6 +143,14 @@ export function CopyIcon(props: SVGProps<SVGSVGElement>) {
     <svg {...base} width="14" height="14" {...props}>
       <rect x="9" y="9" width="11" height="11" rx="2" />
       <path d="M5 15V6a1 1 0 0 1 1-1h9" />
+    </svg>
+  );
+}
+
+export function ChevronIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg {...base} width="12" height="12" {...props}>
+      <path d="m6 9 6 6 6-6" />
     </svg>
   );
 }

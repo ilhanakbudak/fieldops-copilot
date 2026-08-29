@@ -15,10 +15,11 @@
 </p>
 
 > **🚧 In progress.** Sign in, upload a manual, ask questions of it, pull a
-> customer up, find a part, and have a caller's record on screen before the
-> phone is answered — that works today, with an agent that decides which of
-> those a question actually needs. Live call assist and deployment land next;
-> see [Status](#status).
+> customer up, find a part, have a caller's record on screen before the phone is
+> answered, and get a cited suggestion while they are still describing the
+> problem — that works today, with an agent that decides which of those a
+> question actually needs. The cost dashboard and deployment land next; see
+> [Status](#status).
 
 ---
 
@@ -151,6 +152,29 @@ a malformed body. A status that varied would let anyone on the internet ask this
 business, at whatever rate they liked, which phone numbers belong to its
 customers. See [docs/CALLS.md](docs/CALLS.md).
 
+### And keeps helping while they are still talking
+
+<p align="center">
+  <img alt="A live transcript beside streamed suggestions with citations" src="docs/assets/call-assist.png" width="880">
+</p>
+
+A transcript arrives over a WebSocket. Most of it is ignored on purpose — a
+greeting, an address read out twice — because running retrieval on every
+sentence costs about a chat turn each and fills the screen with things to
+ignore, which is how a live assistant becomes a feature people turn off. A cheap
+model decides what is worth answering, and says out loud when it decides
+nothing is.
+
+The pause matters more than the sentence. *"So the water's been warm at the
+kitchen tap,"* and *"ever since you put the radon system in."* are one thought
+arriving as two utterances, and answering the first alone retrieves nothing
+useful. The trigger is silence after a final, not the final itself.
+
+The split between transcript and suggestions is draggable, because there is no
+split that suits both ways of using this — one person watches the transcript and
+glances at suggestions, the other reads a suggestion aloud and glances at the
+transcript.
+
 <p align="center">
   <img alt="The chat on a tablet, sidebar collapsed to an icon rail" src="docs/assets/chat-tablet.png" width="400">
   <img alt="The chat on a phone" src="docs/assets/chat-mobile.png" width="190">
@@ -177,6 +201,7 @@ flowchart LR
     CONN -.->|read only| INV["Ply inventory"]
     TEL["RingCentral"] -.->|"webhook: a phone rang"| API
     API -.->|"WebSocket: screen pop"| WEB
+    WEB -.->|"WebSocket: live transcript"| API
 ```
 
 ### The agent
@@ -409,7 +434,8 @@ fieldops-copilot/
 | 5 · Service Fusion connector (read-only) | ✅ |
 | 6 · Ply inventory connector, employee administration | ✅ |
 | 7 · RingCentral caller lookup, screen pop over WebSocket | ✅ |
-| 8 · Live call assistance, cost dashboard, deployment | ⬜ |
+| 8 · Live call assistance: transcript in, cited suggestions out | ✅ |
+| 9 · Cost dashboard, semantic cache, deployment | ⬜ |
 
 **Milestone 1** — Argon2id passwords, revocable server-side sessions with a
 sliding idle window and a hard ceiling, four roles behind one permission table,
@@ -449,7 +475,12 @@ lookup that returns a *list*, and a permission-gated WebSocket fan-out with a
 bounded queue per subscriber. Plus the audit and retrieval work described under
 [Documentation](#documentation): every agent tool call is now recorded where the
 tools are invoked, and the evaluation set gained a confusable second manual.
-279 tests.
+**Milestone 8** — a transcript WebSocket with pause-based utterance detection, a
+cheap-model actionability classifier that refuses most of a call, suggestions
+built from role-filtered retrieval and the customer's own history, a scripted
+call replayed from the browser so every stage runs for real, and a resizable
+transcript/suggestion split. Plus MCP results rendered as labelled rows rather
+than as the JSON the server happened to send. 342 tests.
 
 ## Documentation
 

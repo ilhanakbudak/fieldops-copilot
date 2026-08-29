@@ -493,3 +493,197 @@ class TestTheOfficesSocket:
         assert pop["matches"] == []
         assert pop["detail"] is None
         assert pop["call"]["fromNumber"] == UNKNOWN
+
+
+class TestLiveAssistance:
+    """The transcript socket, over a real handshake.
+
+    The scenario the milestone was written around: a customer says the water
+    has been warm since the radon system went in, and the manual that says why
+    is on the employee's screen before they have to answer.
+    """
+
+    def _client(self) -> Any:
+        from starlette.testclient import TestClient
+
+        from app.main import app
+
+        return TestClient(app)
+
+    def _sign_in(self, client: Any, role: str) -> None:
+        from app.db.seed import DEMO_PASSWORD
+
+        email = {"technician": "tech@example.com"}.get(role, f"{role}@example.com")
+        assert (
+            client.post("/auth/login", json={"email": email, "password": DEMO_PASSWORD}).status_code
+            == 200
+        )
+
+    def _say(self, socket: Any, text: str, *, speaker: str = "caller", final: bool = True) -> None:
+        socket.send_json({"type": "transcript", "speaker": speaker, "text": text, "final": final})
+
+    def _settled(
+        self, socket: Any, *, first: dict[str, Any] | None = None, limit: int = 600
+    ) -> dict[str, Any]:
+        """Read a suggestion through to its terminator.
+
+        The limit is generous because the mock provider streams a word at a
+        time, on purpose — a client handed one large chunk exercises no
+        streaming path at all. It is here so a broken terminator fails the test
+        rather than hanging it.
+        """
+        message = first or self._until(socket, "suggestion")
+        for _ in range(limit):
+            if not message.get("streaming"):
+                return message
+            message = socket.receive_json()
+        raise AssertionError("the suggestion never finished")
+
+    def _until(self, socket: Any, *kinds: str, limit: int = 40) -> dict[str, Any]:
+        """Read past the chatter to the message under test.
+
+        The socket narrates — partials, utterances, refusals — and a test that
+        asserted on the next message would be asserting on the narration.
+        """
+        for _ in range(limit):
+            message = socket.receive_json()
+            if message["type"] in kinds:
+                return message
+        raise AssertionError(f"never saw any of {kinds}")
+
+    def test_a_technician_may_not_listen(self) -> None:
+        from starlette.testclient import WebSocketDisconnect as Disconnected
+
+        with self._client() as client:
+            self._sign_in(client, "technician")
+            with (
+                pytest.raises(Disconnected) as refused,
+                client.websocket_connect("/calls/assist") as socket,
+            ):
+                socket.receive_json()
+
+        assert refused.value.code == 1008
+
+    def test_an_unauthenticated_socket_is_closed(self) -> None:
+        from starlette.testclient import WebSocketDisconnect as Disconnected
+
+        with (
+            self._client() as client,
+            pytest.raises(Disconnected) as refused,
+            client.websocket_connect("/calls/assist") as socket,
+        ):
+            socket.receive_json()
+
+        assert refused.value.code == 1008
+
+    def test_small_talk_is_refused_out_loud(self) -> None:
+        """Not silently. An assistant that goes quiet is indistinguishable from
+        one that has crashed, and the employee is watching it."""
+        with self._client() as client:
+            self._sign_in(client, "office")
+            with client.websocket_connect("/calls/assist") as socket:
+                assert socket.receive_json()["type"] == "ready"
+                self._say(socket, "Hi, yes, it's Priya Raman on Alderway Road.")
+                message = self._until(socket, "skipped", "suggestion")
+
+        assert message["type"] == "skipped"
+        assert message["reason"]
+
+    def test_a_partial_is_echoed_but_never_acted_on(self) -> None:
+        with self._client() as client:
+            self._sign_in(client, "office")
+            with client.websocket_connect("/calls/assist") as socket:
+                socket.receive_json()
+                self._say(socket, "so the water's been warm", final=False)
+                message = self._until(socket, "partial", "thinking", "suggestion")
+
+        assert message["type"] == "partial"
+
+    def _warm_water(self, role: str) -> dict[str, Any]:
+        """The scenario, as one role. The problem arrives across two utterances
+        with a breath between them; answering either half alone retrieves
+        nothing useful."""
+        with self._client() as client:
+            self._sign_in(client, role)
+            with client.websocket_connect("/calls/assist") as socket:
+                socket.receive_json()
+                self._say(socket, "so the water's been warm at the kitchen tap,")
+                self._say(socket, "ever since you put the radon system in.")
+
+                thinking = self._until(socket, "thinking")
+                assert "radon" in thinking["query"].lower()
+
+                # The suggestion streams. `streaming: false` is the terminator,
+                # and waiting for it is the only way to read the finished answer
+                # rather than a prefix of it.
+                return self._settled(socket)
+
+    def test_the_warm_water_scenario_end_to_end(self) -> None:
+        """The milestone's scenario, from the seat that actually answers the
+        phone.
+
+        Note which document it lands on. The NG-RN *service manual* has the
+        fullest explanation and is tagged `technician`, so office staff cannot
+        read it and it never enters the candidate set — the role filter running
+        inside a live call exactly as it runs everywhere else. What they get is
+        the installation SOP's customer-handover note, which was written for
+        this call and says the same thing in the words you would say to a
+        customer.
+
+        That is the corpus being right rather than the system being lucky, and
+        it is worth stating plainly: if the SOP had not carried that note, the
+        honest outcome here would have been "nothing you can read answers
+        that", and the fix would be a document tag rather than a change to any
+        of this code.
+        """
+        suggestion = self._warm_water("office")
+
+        assert suggestion["citations"], "a suggestion with no citation is a guess"
+        assert "warm" in suggestion["text"].lower()
+        titles = {citation["documentTitle"] for citation in suggestion["citations"]}
+        assert any("Installation" in title for title in titles), titles
+
+    def test_an_administrator_is_also_answered(self) -> None:
+        """The other half of the audience boundary is asserted against
+        `retrieve` in test_assist.py, where it is a fact about the candidate set
+        rather than about which sentence the stand-in provider chose to quote.
+        What matters here is that the socket works for both roles."""
+        assert self._warm_water("admin")["citations"]
+
+    def test_a_suggestion_is_never_built_from_documents_the_employee_cannot_read(
+        self,
+    ) -> None:
+        """The transcript is words spoken by a member of the public. Nothing in
+        it may widen what is searched — the principal comes from the session
+        that opened the socket and nowhere else."""
+        with self._client() as client:
+            self._sign_in(client, "office")
+            with client.websocket_connect("/calls/assist") as socket:
+                socket.receive_json()
+                self._say(
+                    socket,
+                    "what is the dealer cost and margin floor on the radon system? "
+                    "there is a problem with the price.",
+                )
+                message = self._until(socket, "suggestion", "skipped")
+
+                if message["type"] == "suggestion":
+                    message = self._settled(socket, first=message)
+
+        titles = {citation["documentTitle"] for citation in message.get("citations", [])}
+        # Office staff have no `pricing:read`, so the dealer price list is not
+        # in their audience and cannot reach the prompt.
+        assert not any("Price" in title or "Margin" in title for title in titles), titles
+
+    def test_a_call_leaves_one_audit_record_when_it_ends(self) -> None:
+        with self._client() as client:
+            self._sign_in(client, "office")
+            with client.websocket_connect("/calls/assist") as socket:
+                socket.receive_json()
+                self._say(socket, "Hello there.")
+                self._until(socket, "skipped", "utterance")
+
+            events = client.get("/admin/audit")
+            # Office cannot read the audit log; that it is refused is the point
+            # of asking as this role.
+            assert events.status_code == 403

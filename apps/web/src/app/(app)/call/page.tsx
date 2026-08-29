@@ -7,6 +7,7 @@ import { ApiError, api } from "@/lib/api";
 import { useSession } from "@/lib/session";
 import { PageHeader } from "@/components/AppShell";
 import { Badge, Button, EmptyState } from "@/components/ui";
+import { LiveAssist } from "./LiveAssist";
 import { useCallStream } from "./useCallStream";
 import styles from "./call.module.css";
 
@@ -21,6 +22,7 @@ export default function CallPage() {
   const { can } = useSession();
   const mayAssist = can("calls:assist");
   const { state, pops, dismiss } = useCallStream(mayAssist);
+  const demo = useCallDemo(mayAssist);
 
   if (!mayAssist) {
     return (
@@ -46,7 +48,7 @@ export default function CallPage() {
           <span className={`${styles.dot} ${dotClass(state)}`} aria-hidden />
           {STATUS_TEXT[state]}
         </span>
-        <RingThePhone disabled={state !== "watching"} />
+        <RingThePhone demo={demo} disabled={state !== "watching"} />
       </div>
 
       {pops.length === 0 ? (
@@ -66,6 +68,8 @@ export default function CallPage() {
           ))}
         </div>
       )}
+
+      <LiveAssist script={demo?.script ?? null} />
     </>
   );
 }
@@ -89,20 +93,26 @@ function dotClass(state: ReturnType<typeof useCallStream>["state"]): string {
  * system takes — verification included. A button wired straight into the
  * lookup would skip the two steps most worth showing.
  */
-function RingThePhone({ disabled }: { disabled: boolean }) {
+function useCallDemo(enabled: boolean): CallDemo | null {
   const [demo, setDemo] = useState<CallDemo | null>(null);
-  const [busy, setBusy] = useState<string | null>(null);
 
   useEffect(() => {
+    if (!enabled) return;
     api
       .callDemo()
       .then(setDemo)
       // Outside demo mode this is a 404 and there is nothing to show. A real
-      // deployment has a real phone system.
+      // deployment has a real phone system and a real transcription service.
       .catch((cause) => {
         if (!(cause instanceof ApiError)) throw cause;
       });
-  }, []);
+  }, [enabled]);
+
+  return demo;
+}
+
+function RingThePhone({ demo, disabled }: { demo: CallDemo | null; disabled: boolean }) {
+  const [busy, setBusy] = useState<string | null>(null);
 
   if (!demo) return null;
 

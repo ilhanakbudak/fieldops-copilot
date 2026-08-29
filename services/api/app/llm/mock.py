@@ -39,6 +39,28 @@ _WORD = re.compile(r"[a-z0-9][a-z0-9\-/.]*")
 _MARKER = re.compile(r"\[S(\d+)\]")
 _CODE_LIKE = re.compile(r"^[a-z]{1,4}-\d{2,4}$")
 _PERSON = re.compile(r"\b[A-Z][a-z]{2,}\s+[A-Z][a-z]{2,}\b")
+
+# Words that show up when something is wrong. Kept beside the tool routing
+# because it is the same kind of guess: a keyword standing in for a judgement.
+_PROBLEM_WORDS = frozenset(
+    {
+        "broken",
+        "code",
+        "error",
+        "fault",
+        "leak",
+        "leaking",
+        "noise",
+        "problem",
+        "smell",
+        "smells",
+        "stopped",
+        "warm",
+        "warranty",
+        "why",
+        "wrong",
+    }
+)
 _ACCOUNT = re.compile(r"\bNG-\d{3,6}\b")
 
 # Words that appear in every question and discriminate between nothing.
@@ -108,9 +130,15 @@ class MockLlmProvider:
     ) -> Completion:
         prompt = messages[-1].content if messages else ""
 
-        # Query analysis asks for JSON. Answering in the right shape keeps the
-        # analysis step exercised in demo mode rather than skipped.
-        if "JSON" in (messages[0].content if messages else ""):
+        system = messages[0].content if messages else ""
+
+        # Two callers ask for JSON and they want different shapes. Routed on a
+        # phrase from each system prompt rather than on "JSON", which both
+        # contain — a third caller would need a third branch, and that is the
+        # honest cost of a stand-in that has no idea what it is being asked.
+        if "live phone call" in system:
+            return Completion(text=_actionable(messages), usage=_usage(messages, 30))
+        if "JSON" in system:
             return Completion(text=_analyse(prompt), usage=_usage(messages, 40))
 
         return Completion(text=_answer(messages), usage=_usage(messages, 80))
@@ -130,7 +158,12 @@ class MockLlmProvider:
                 yield StreamEvent(usage=_usage(messages, 0))
                 return
 
-        text = _answer(messages)
+        # Two sentences on a live call, three elsewhere. The employee is
+        # reading this aloud with a customer waiting, and a suggestion that
+        # needs scrolling has already failed. A real model is told the same
+        # thing in the system prompt; this one cannot read prompts.
+        limit = 2 if "on the phone right now" in (messages[0].content if messages else "") else 3
+        text = _answer(messages, limit)
         # Word by word, so the client's streaming path is exercised rather than
         # handed one large chunk that hides a broken renderer.
         words = text.split(" ")
@@ -142,6 +175,22 @@ class MockLlmProvider:
 def _without_headings(block: str) -> str:
     lines = [line for line in block.splitlines() if not line.lstrip().startswith("#")]
     return "\n".join(lines)
+
+
+# A sentence somebody could say. Below the floor it is a fragment; above the
+# ceiling it is a run of text with no full stop in it — a table, a list, a
+# specification block — and a table read aloud to somebody on the telephone is
+# worse than no answer. A generative model would summarise it; this one can
+# only copy, so it declines instead.
+_MIN_SENTENCE = 40
+_MAX_SENTENCE = 320
+
+
+def _readable(sentence: str) -> bool:
+    if not _MIN_SENTENCE <= len(sentence) <= _MAX_SENTENCE:
+        return False
+    # Two or more pipes is a table row however short it is.
+    return sentence.count("|") < 2
 
 
 def _clean(sentence: str) -> str:
@@ -329,7 +378,54 @@ def _analyse(prompt: str) -> str:
     )
 
 
-def _answer(messages: list[Message]) -> str:
+def _actionable(messages: list[Message]) -> str:
+    """Rule-based stand-in for the live-call actionability classifier.
+
+    The same judgement `app/realtime/assist.py` falls back to when the cheap
+    model is unavailable, and for the same reason it is acceptable there: the
+    cost of a false positive is one unnecessary lookup, and the cost of a false
+    negative is a suggestion that does not appear.
+
+    Visible here rather than hidden, like `_route`, because a reviewer watching
+    the demo produce a suggestion should be able to see exactly how much of that
+    was a language model. None of it.
+    """
+    transcript = next(
+        (message.content for message in reversed(messages) if message.role == "user"), ""
+    )
+    # The prompt is two labelled sections — see `transcript_prompt`. The
+    # decision is about the newest lines; the earlier ones are only there to say
+    # what a pronoun refers to.
+    _, _, newest = transcript.rpartition("Newest:")
+    lines = [line for line in (newest or transcript).splitlines() if line.strip()]
+    if not lines:
+        return json.dumps({"actionable": False, "query": "", "reason": "nothing said yet"})
+
+    spoken = " ".join(line.split(":", 1)[-1].strip() for line in lines)
+    words = {word.lower() for word in re.findall(r"[a-z']+", spoken.lower())}
+    hits = words & _PROBLEM_WORDS
+
+    if not (spoken.rstrip().endswith("?") or hits):
+        return json.dumps({"actionable": False, "query": "", "reason": "not a question"})
+
+    # The query reaches one line further back than the decision did, because
+    # people describe a problem across a breath — "the water's been warm" /
+    # "ever since the radon system went in" — and neither half alone is
+    # searchable. A real model resolves the pronoun; this pastes the context in
+    # and lets the retrieval pipeline sort it out.
+    whole = [line for line in transcript.splitlines() if line.strip() and ":" in line]
+    context_lines = [line for line in whole if not line.startswith(("The call so far", "Newest"))]
+    recent = [line.split(":", 1)[-1].strip() for line in context_lines[-3:]]
+    return json.dumps(
+        {
+            "actionable": True,
+            "query": " ".join(recent).strip() or spoken,
+            "reason": f"mentions {sorted(hits)[0]}" if hits else "a question was asked",
+        }
+    )
+
+
+def _answer(messages: list[Message], limit: int = 3) -> str:
     """Select the sentences that best match the question, with their markers.
 
     Reads the *tool results*, not the system prompt. An earlier version scanned
@@ -342,10 +438,19 @@ def _answer(messages: list[Message]) -> str:
     )
     results = [message.content for message in messages if message.role == "tool"]
     if not results:
-        return (
-            "I do not have anything to answer that from. Try asking about the "
-            "company's documents, or about a customer."
-        )
+        # Live call assistance renders its passages into the user turn rather
+        # than through a tool call — there is no agent loop on that path, the
+        # retrieval already happened. Accepted only when the text actually
+        # carries marked source blocks, so this stays a rule about passages and
+        # does not become "scan whatever was sent", which is the mistake the
+        # docstring above records.
+        if _SOURCE_BLOCK.search(question):
+            results = [question]
+        else:
+            return (
+                "I do not have anything to answer that from. Try asking about the "
+                "company's documents, or about a customer."
+            )
 
     transcript = "\n\n".join(results)
     wanted = _tokens(question)
@@ -359,7 +464,7 @@ def _answer(messages: list[Message]) -> str:
         # from E-04…" — a paste from a file rather than a reply.
         for sentence in _SENTENCE.split(_without_headings(match.group(2))):
             sentence = _clean(sentence)
-            if len(sentence) < 40:
+            if not _readable(sentence):
                 continue
             overlap = wanted & _tokens(sentence)
             # Two content words, or one exact code. A single incidental word in
@@ -392,7 +497,7 @@ def _answer(messages: list[Message]) -> str:
         return _relay(results[-1])
 
     scored.sort(key=lambda row: -row[0])
-    chosen = scored[:3]
+    chosen = scored[:limit]
 
     # Keep the passages in source order in the answer, so the citations read in
     # the order a person would encounter them in the documents.

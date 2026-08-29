@@ -165,16 +165,108 @@ anything to a telephone. There is no transfer, no hangup, no click-to-dial —
 read-only by construction, like the CRM and inventory connectors, and asserted
 structurally rather than promised.
 
-**No transcription yet.** Live call assistance — transcript in, suggestions out
-— is milestone 8. The screen pop is what happens before the call is answered;
-that is what happens during it.
+**No transcription.** The socket takes text, not audio. A transcription
+service — Deepgram, AssemblyAI, RingCentral's own — sits in front of it and
+sends fragments. Which one is a deployment decision, and putting a vendor SDK in
+this repository would have added a credential and a dependency without adding a
+demonstrable idea.
+
+---
+
+## During the call
+
+`GET /calls/assist` is the second socket: transcript in, suggestions out, for
+the duration of one call. Same cookie, same `calls:assist` gate.
+
+### Most of what it is sent is deliberately ignored
+
+Streaming transcription does not produce sentences. It produces a rising tide of
+guesses:
+
+```
+"so the water"
+"so the water has been"
+"so the water has been warm"
+"so the water's been warm ever since"        ← final
+"since you put the radon system in"          ← final
+```
+
+Running retrieval on each of those is expensive, and worse than expensive: the
+answers flicker, because each partial is a different question. So partials
+update the transcript and never trigger anything, and **a boundary is a pause
+after a final, not the final itself** — people describe a problem across a
+breath, and answering the first half retrieves nothing useful. Any new final
+resets the clock.
+
+`TranscriptBuffer` takes a clock rather than owning a timer, which is why the
+tests for it do not sleep. A suite that waits out its own debounce is one nobody
+runs twice.
+
+### Then a cheap model decides whether to spend anything
+
+Most of a service call is not a question. It is hello, it is a postcode read out
+twice, it is "bear with me". Retrieval on all of it costs roughly a chat turn
+per sentence, and it fills the employee's screen with suggestions to ignore —
+which is how a live assistant becomes a thing people turn off.
+
+So the classifier answers one question: is there a problem or a question here
+that the company's documents could answer? It sees the window for resolving what
+was meant and **decides on the newest lines only**. Deciding from the whole
+window means a caller who says "thanks" after a problem has that problem
+classified, retrieved and generated a second time.
+
+It cannot fail the call. A timeout or a malformed reply falls back to a keyword
+rule — worse, and cheap. The failure is a few unnecessary lookups rather than an
+assistant that stops mid-call, and the degradation is surfaced rather than
+silent.
+
+Refusals are shown. An assistant that says nothing for a minute is
+indistinguishable from one that has crashed, and the employee has no way to
+check while they are talking to a customer.
+
+### The transcript never widens what may be searched
+
+This matters more here than anywhere else in this application, because half the
+words arriving are spoken by a member of the public. The principal comes from
+the session cookie that opened the socket and is passed to `retrieve` unchanged.
+Nothing in the transcript reaches that argument.
+
+The consequence is visible in the demo, and worth stating rather than hiding:
+the NG-RN service manual has the fullest explanation of warm water after a radon
+installation, and it is tagged `technician`. Office staff answer the phone, so
+they cannot read it and it never enters the candidate set. What they get instead
+is the installation SOP's customer-handover note — written for exactly this
+call, and in the words you would use to a customer.
+
+That is the corpus being right rather than the system being lucky. Without that
+note the honest outcome would be "nothing you can read answers that", and the
+fix would be a document tag rather than a change to any of this code.
+
+### And there is a ceiling
+
+Twenty-five suggestions per call, said out loud when it is reached. A hold tone
+transcribed as speech, or a caller reading a manual aloud, would otherwise be an
+unbounded bill attached to one phone call.
+
+### What the screen does with it
+
+Two columns and a divider the reader can move. There is no split that suits both
+ways of using this — one person watches the transcript and glances at
+suggestions, the other reads a suggestion aloud and glances at the transcript —
+so there is no point choosing one for them.
+
+The divider is a real `role="separator"`: focusable, moved with the arrow keys,
+Home and End snap to the bounds, double-click resets, and the position is kept
+in `localStorage`. A resizable layout nobody can resize without a mouse is not
+one.
 
 ---
 
 ## Trying it
 
-In demo mode the Live call page has a **Ring from** control, and it is not a
-shortcut into the lookup. It fetches the mock connector's verification token
+In demo mode the Live call page has two controls, and neither is a shortcut.
+
+**Ring from** is not a shortcut into the lookup. It fetches the mock connector's verification token
 from a signed-in, permission-gated endpoint, and then the *browser* posts a real
 webhook — through verification, parsing, normalisation, the CRM lookup and the
 fan-out. The path a reviewer clicks is the path a phone system takes.
@@ -182,3 +274,14 @@ fan-out. The path a reviewer clicks is the path a phone system takes.
 The token is a demo secret and it is still a secret: anybody holding it can
 forge a screen pop, so the endpoint that hands it out requires `calls:assist`
 and refuses outside demo mode.
+
+**Start a call** replays a scripted transcript — `fixtures/calls/warm-water.json`
+— from the browser, at the delays written in the file, over the same socket a
+transcription service would use. The pause detector, the classifier, retrieval
+and generation all run for real. Only the microphone is fake.
+
+The script is written to exercise the decisions rather than to flatter them.
+It opens with a greeting and an address, which the classifier should refuse and
+the screen should say so. The problem arrives across two utterances with a
+breath between them. The follow-up is a pronoun with no antecedent of its own,
+answerable only from the lines above it.
