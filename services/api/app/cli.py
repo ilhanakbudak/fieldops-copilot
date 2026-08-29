@@ -35,7 +35,9 @@ async def _seed() -> int:
 
     async with session_scope() as db:
         created = await seed_demo_users(db)
-    async with session_scope() as db:
+    # See app/db/engine.py: writing the corpus with no employee signed in is
+    # the service identity's job, and Postgres enforces that.
+    async with session_scope(service=True) as db:
         documents = await seed_corpus(db)
 
     print(f"Demo accounts ready ({created} created, {len(DEMO_USERS) - created} already present).")

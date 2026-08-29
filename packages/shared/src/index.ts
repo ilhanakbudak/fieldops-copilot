@@ -122,6 +122,7 @@ export interface SearchHit {
   chunkId: string;
   documentId: string;
   documentTitle: string;
+  docType: string;
   content: string;
   page: number | null;
   section: string | null;

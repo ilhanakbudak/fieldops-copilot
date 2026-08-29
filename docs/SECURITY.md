@@ -97,6 +97,45 @@ stops is worse than one that was never there.
 
 [`app/audit/log.py`](../services/api/app/audit/log.py)
 
+### 4. Every tool call is recorded where the tools are invoked
+
+The claim in the table below — that one request id ties a request to every
+retrieval and connector call made while serving it — was not true for the path
+that matters most. The HTTP routes audited their own lookups, but when the
+*assistant* opened a customer record on an employee's behalf, all that reached
+the trail was one `ai.answer` event at the end of the turn naming which tools
+had run. Not which customer. And a turn that failed halfway wrote nothing at
+all, having already read the record.
+
+The record is now written in `_invoke`, the single function every tool call
+passes through — built-in, MCP, and the ones the model invents. That placement
+is the point: a tool added later cannot forget to audit itself, because it was
+never the tool's job. Each result names what it read (`resource_type`,
+`resource_id`) and the arguments the model sent are kept, capped, alongside it.
+A customer's name in an audit record is the record, not a leak in it.
+
+The knowledge-base tool records the document ids it retrieved and the audience
+it searched under, which is the difference between "someone asked about
+pricing" and "these three documents were read, as a salesperson".
+
+[`app/agent/loop.py`](../services/api/app/agent/loop.py)
+
+### 5. Background work says who it is
+
+Row-level security lets `admin` or `service` write the corpus. Ingestion,
+re-indexing and demo seeding all run with no employee signed in — and until
+recently none of them said `service` either, so on Postgres they ran as an
+unidentified caller and the policies refused the insert. The escape hatch was
+described in the migration and implemented nowhere.
+
+`session_scope(service=True)` is now that identity, spelled as a keyword rather
+than a role on `Principal`: a role on `Principal` would also be a document
+audience, and no employee should be able to become the service by having their
+role changed. `tests/test_postgres.py` asserts both halves — that the service
+may write, and that a transaction which never said who it was may not.
+
+[`app/db/engine.py`](../services/api/app/db/engine.py)
+
 ---
 
 ## The rest of the list
@@ -110,7 +149,7 @@ stops is worse than one that was never there.
 | Session hijacking | `HttpOnly`, `SameSite=Lax`, `Secure` in production; token stored hashed |
 | Role-based access | One permission table, gates declared on the route, denials audited |
 | Employees see only what they may | Role filter inside the retrieval query, plus Postgres RLS |
-| Logging of AI/API activity | Append-only `audit_events`; one request id ties a request to every retrieval, connector and model call made while serving it |
+| Logging of AI/API activity | Append-only `audit_events`; one request id ties a request to every retrieval, connector and model call made while serving it — written at the tool boundary, so it covers what the assistant did as well as what the browser asked for |
 | Disabling an account | Flag plus immediate session revocation; the last active administrator cannot be disabled or demoted |
 | CRM credential storage | Encrypted at rest, decrypted only in the connector — lands with the Service Fusion milestone |
 

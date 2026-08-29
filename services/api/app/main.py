@@ -56,7 +56,9 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
         # machine means a one-off ~130 MB download. Doing it at boot rather
         # than on the first question means the delay is visible in the startup
         # log instead of looking like a hung request.
-        async with session_scope() as db:
+        # `service`, not "nobody": ingestion writes documents and chunks, which
+        # row-level security only lets an admin or the service identity do.
+        async with session_scope(service=True) as db:
             documents = await seed_corpus(db)
         if documents:
             logger.info("ingested %d fixture documents", documents)

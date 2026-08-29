@@ -11,7 +11,9 @@ temperature" are the same idea, and it can tell `E-04` from `E-14` perfectly.
 Neither is sufficient. Running both and fusing the ranks is.
 
 The role filter is in the query here for the same reason it is in the vector
-store: a chunk excluded after the fact has already been read.
+store: a chunk excluded after the fact has already been read. How it is spelled
+per dialect lives in app/db/roles.py, so the two stores and the document list
+cannot drift apart on the one predicate that must not.
 """
 
 from __future__ import annotations
@@ -24,6 +26,7 @@ from sqlalchemy.engine import Row
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.rbac import Role
+from app.db.roles import visible_to_sql
 from app.rag.store.base import SearchHit
 
 # FTS5 treats these as operators. A question mark or a quote in an employee's
@@ -54,9 +57,10 @@ async def _postgres(
     limit: int,
     doc_types: list[str] | None,
 ) -> list[SearchHit]:
-    filters = ["c.allowed_roles && :roles", "c.content_tsv @@ q"]
+    role_filter, role_params = visible_to_sql("c.allowed_roles", roles, "postgresql")
+    filters = [role_filter, "c.content_tsv @@ q"]
     params: dict[str, object] = {
-        "roles": [role.value for role in roles],
+        **role_params,
         "query": query,
         "limit": limit,
     }
@@ -70,8 +74,8 @@ async def _postgres(
     # question mark anybody types.
     sql = text(
         f"""
-        SELECT c.id, c.document_id, d.title, c.content, c.page, c.section,
-               c.parent_index, ts_rank_cd(c.content_tsv, q) AS score
+        SELECT c.id, c.document_id, d.title, d.doc_type, c.content, c.page,
+               c.section, c.parent_index, ts_rank_cd(c.content_tsv, q) AS score
           FROM chunks c
           JOIN documents d ON d.id = c.document_id,
                websearch_to_tsquery('english', :query) q
@@ -95,14 +99,8 @@ async def _sqlite(
     if not match:
         return []
 
-    # SQLite has no array type, so `allowed_roles` is a JSON list and the
-    # overlap test is a set of LIKEs. Ugly, and still in the query rather than
-    # in Python, because the alternative is reading rows the caller may not see.
-    role_clauses = " OR ".join(f"c.allowed_roles LIKE :role{i}" for i in range(len(roles)))
-    filters = [f"({role_clauses})"]
-    params: dict[str, object] = {
-        f"role{i}": f'%"{role.value}"%' for i, role in enumerate(sorted(roles))
-    }
+    role_filter, params = visible_to_sql("c.allowed_roles", roles, "sqlite")
+    filters = [role_filter]
     params |= {"match": match, "limit": limit}
 
     if doc_types:
@@ -115,8 +113,8 @@ async def _sqlite(
     # downstream assumes of every leg.
     sql = text(
         f"""
-        SELECT c.id, c.document_id, d.title, c.content, c.page, c.section,
-               c.parent_index, -bm25(chunks_fts) AS score
+        SELECT c.id, c.document_id, d.title, d.doc_type, c.content, c.page,
+               c.section, c.parent_index, -bm25(chunks_fts) AS score
           FROM chunks_fts
           JOIN chunks c ON c.id = chunks_fts.chunk_id
           JOIN documents d ON d.id = c.document_id
@@ -150,9 +148,10 @@ def _hit(row: Row[Any]) -> SearchHit:
         chunk_id=values[0],
         document_id=values[1],
         document_title=values[2],
-        content=values[3],
-        page=values[4],
-        section=values[5],
-        parent_index=values[6],
-        score=float(values[7]),
+        doc_type=values[3],
+        content=values[4],
+        page=values[5],
+        section=values[6],
+        parent_index=values[7],
+        score=float(values[8]),
     )

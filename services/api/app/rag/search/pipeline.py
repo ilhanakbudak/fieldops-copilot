@@ -5,8 +5,10 @@
 Each step earns its place by fixing a failure the previous one has:
 
 1. **Analyse.** Employees type context, not queries. Cheap model, and it cannot
-   fail the request. Its guesses about document type *prefer*, they do not
-   filter — see `_rerank`. Only the caller's role removes a document.
+   fail the request. It contributes a rewrite and the exact terms it pulled out
+   of the question. Its guess about *document type* contributes nothing at all
+   — see the note at the end of this docstring. Only the caller's role removes
+   a document.
 2. **Search both ways, in parallel.** Embeddings cannot tell `E-04` from `E-14`;
    lexical search cannot tell "warm water" from "elevated temperature". They are
    run concurrently because neither depends on the other and the slower one sets
@@ -36,8 +38,16 @@ passed the analysis step's document-type guess into both search legs as a hard
 filter, which was wrong in a way that took a failing test to notice: asked "why
 is the water warm since the radon system was installed", the cheap model saw
 "installed", guessed `sop`, and the service manual that actually answers the
-question was excluded before ranking ever ran. A heuristic from a cheap model
-adjusts ranking. It does not get to hide documents.
+question was excluded before ranking ever ran.
+
+The obvious repair — keep the guess, demote it from a filter to a tiebreak
+below the reranker's score — was tried and is not in this file either. It broke
+the same test, for the same reason: with the SOP and the radon manual scored
+close together, a tiebreak is a filter with extra steps. `doc_type` reaches the
+ranker on every `SearchHit` and the ranker ignores it, which is a deliberate
+outcome rather than an oversight. The guess is kept because the retrieval
+inspector displays it, and because a future version that files documents by
+type in the UI will want it. It does not touch the ordering.
 """
 
 from __future__ import annotations

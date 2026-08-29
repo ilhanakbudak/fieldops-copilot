@@ -71,6 +71,8 @@ class SearchKnowledgeBase:
                 ),
                 summary=f"Searched the knowledge base for “{query}” — nothing matched",
                 data={"sources": [], "query": query},
+                resource_type="query",
+                audit={"documents": [], "roles": sorted(context.principal.document_roles)},
             )
 
         return ToolResult(
@@ -86,5 +88,13 @@ class SearchKnowledgeBase:
                 "candidates": result.candidates,
                 "reranker": result.reranker,
                 "passages": result.passages,
+            },
+            resource_type="query",
+            # Which documents were read on this employee's behalf, and under
+            # whose audience. This is the answer to "what did the system fetch
+            # to answer that" — the question the trail exists for.
+            audit={
+                "documents": sorted({p.document_id for p in result.passages}),
+                "roles": sorted(context.principal.document_roles),
             },
         )

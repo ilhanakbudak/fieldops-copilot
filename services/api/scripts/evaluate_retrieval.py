@@ -15,6 +15,12 @@ Three metrics:
 one that matters: a passage never retrieved cannot be cited, and no amount of
 generation quality recovers it.
 
+A case may require the passage to come from a named document as well as from a
+named section. Two manuals for two models of the same product line have a
+section called "Resin Replacement" each, and retrieving the wrong one is a
+confident answer with the wrong part number in it — which a section-name match
+alone scores as a hit.
+
 **MRR** — where in the list. A correct passage at rank 6 is one the model reads
 last, after five less relevant ones.
 
@@ -115,9 +121,18 @@ async def _run(top_k: int, *, rerank: str, boost: bool) -> list[CaseResult]:
                 )
 
                 sections = [passage.section or "" for passage in result.passages]
+                titles = [passage.document_title for passage in result.passages]
                 expected = set(case.get("expect_sections", []))
+                # When a case names documents, the section has to be found in
+                # one of them. Absent the key, any document will do.
+                required = set(case.get("expect_documents", []))
+                found = zip(sections, titles, strict=True)
                 rank = next(
-                    (index for index, section in enumerate(sections, 1) if section in expected),
+                    (
+                        index
+                        for index, (section, title) in enumerate(found, 1)
+                        if section in expected and (not required or title in required)
+                    ),
                     None,
                 )
                 results.append(

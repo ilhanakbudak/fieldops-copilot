@@ -27,6 +27,11 @@ class SearchHit:
     chunk_id: str
     document_id: str
     document_title: str
+    # Carried through from the document so ranking can use it. Query analysis
+    # guesses which kind of document should answer a question, and a guess that
+    # never reaches the ranker is a guess that does nothing — see
+    # app/rag/search/pipeline.py.
+    doc_type: str
     content: str
     page: int | None
     section: str | None

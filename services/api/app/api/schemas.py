@@ -118,6 +118,7 @@ class SearchHitOut(Schema):
     chunk_id: str
     document_id: str
     document_title: str
+    doc_type: str
     content: str
     page: int | None
     section: str | None

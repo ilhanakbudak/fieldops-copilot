@@ -11,6 +11,7 @@ def _hit(chunk_id: str) -> SearchHit:
         chunk_id=chunk_id,
         document_id="doc",
         document_title="Doc",
+        doc_type="manual",
         content=chunk_id,
         page=1,
         section=None,

@@ -72,6 +72,10 @@ class FindMaterial:
             content="\n\n".join(_render(material) for material in matches),
             summary=f"Found {len(matches)} part{'s' if len(matches) != 1 else ''}",
             data={"materials": [_card(material) for material in matches]},
+            resource_type="material",
+            # Whether cost was attached is the field-level gate's outcome, so it
+            # is the thing worth being able to prove after the fact.
+            audit={"skus": [material.sku for material in matches], "pricing": with_pricing},
         )
 
 

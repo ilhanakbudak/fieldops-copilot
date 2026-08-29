@@ -76,6 +76,11 @@ class FindCustomer:
             content=preamble + "\n".join(lines),
             summary=f"Found {len(matches)} customer{'s' if len(matches) != 1 else ''}",
             data={"customers": [_customer_card(customer) for customer in matches]},
+            resource_type="customer",
+            # Every account this returned, not just the one the model went on to
+            # open. A search that surfaced the wrong household's address has
+            # disclosed it whatever happened next.
+            audit={"matched": [customer.id for customer in matches]},
         )
 
 
@@ -123,6 +128,8 @@ class GetCustomerDetail:
             content=_render(detail),
             summary=f"Pulled {detail.customer.name} ({detail.customer.id})",
             data={"customer": _detail_card(detail)},
+            resource_type="customer",
+            resource_id=detail.customer.id,
         )
 
 

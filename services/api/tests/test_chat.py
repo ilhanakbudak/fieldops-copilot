@@ -324,3 +324,59 @@ async def test_an_answer_is_recorded_in_the_audit_trail(
     detail = json.loads(events[0].detail or "{}")
     assert detail["passages"] >= 1
     assert "costUsd" in detail
+
+
+async def test_every_tool_call_is_audited_with_what_it_read(
+    client: AsyncClient, db: AsyncSession
+) -> None:
+    """The assistant reads a customer record on an employee's behalf. That is
+    the activity the trail exists for, and an aggregate at the end of the turn
+    naming only the tool is not it — a turn that fails halfway has still read
+    the customer.
+    """
+    from sqlalchemy import select
+
+    from app.db.models import AuditEvent
+
+    await login(client, "office")
+    await ask(client, "Look up the customer Priya Raman")
+
+    events = list(
+        (
+            await db.execute(
+                select(AuditEvent)
+                .where(AuditEvent.action.like("tool.%"))
+                .order_by(AuditEvent.occurred_at)
+            )
+        ).scalars()
+    )
+
+    assert events, "no tool call was recorded"
+    lookup = next(event for event in events if event.action == "tool.find_customer")
+    assert lookup.resource_type == "customer"
+    assert lookup.actor_email == "office@example.com"
+    detail = json.loads(lookup.detail or "{}")
+    assert "Raman" in detail["arguments"]["query"]
+    assert detail["matched"], "the accounts the search disclosed were not recorded"
+
+
+async def test_a_knowledge_search_records_the_documents_it_read(
+    client: AsyncClient, db: AsyncSession
+) -> None:
+    from sqlalchemy import select
+
+    from app.db.models import AuditEvent
+
+    await _seed(client)
+    await login(client, "technician")
+    await ask(client, "What does error code E-04 mean?")
+
+    event = (
+        await db.execute(
+            select(AuditEvent).where(AuditEvent.action == "tool.search_knowledge_base")
+        )
+    ).scalar_one()
+
+    detail = json.loads(event.detail or "{}")
+    assert detail["documents"], "no document ids recorded"
+    assert detail["roles"] == ["technician"]

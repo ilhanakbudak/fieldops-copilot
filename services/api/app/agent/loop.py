@@ -26,6 +26,13 @@ the conversation, and the model saying nothing about why.
 and a payload for the interface. The customer cards and source panels are built
 from the payload; the model reads the prose. Keeping them separate is what stops
 an interface change from silently altering what the model is told.
+
+**Every call is audited here, not at the tools.** `_invoke` is the one place
+every tool run passes through — built-in, MCP, and the ones the model invents —
+so it is the only place where "no record" cannot be an oversight in a tool
+somebody added later. The assistant reads customer records on an employee's
+behalf; the record of that is not optional, and an aggregate at the end of the
+turn is not it either. A turn that fails halfway has still read the customer.
 """
 
 from __future__ import annotations
@@ -38,6 +45,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from app.agent.tools import Tool, ToolContext, ToolResult, spec
+from app.audit import ERROR, SUCCESS, audit
 from app.config import Settings
 from app.llm.base import LlmProvider, Message, ToolCall, Usage
 
@@ -206,10 +214,30 @@ async def _invoke(by_name: dict[str, Tool], call: ToolCall, context: ToolContext
                 ok=False,
             )
 
+    duration_ms = int((time.perf_counter() - started) * 1000)
+
+    await audit(
+        f"tool.{call.name}",
+        outcome=SUCCESS if result.ok else ERROR,
+        principal=context.principal,
+        resource_type=result.resource_type,
+        resource_id=result.resource_id,
+        detail={
+            # The model's arguments as sent. This is the "what did they ask
+            # for" half of the question the trail exists to answer, and it is
+            # capped rather than omitted — a customer name is the point of the
+            # record, not an accident in it.
+            "arguments": {key: str(value)[:200] for key, value in call.arguments.items()},
+            "summary": result.summary,
+            "durationMs": duration_ms,
+            **result.audit,
+        },
+    )
+
     return ToolRun(
         id=call.id,
         name=call.name,
         arguments=call.arguments,
         result=result,
-        duration_ms=int((time.perf_counter() - started) * 1000),
+        duration_ms=duration_ms,
     )

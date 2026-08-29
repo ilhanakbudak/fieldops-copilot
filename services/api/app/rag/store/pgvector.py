@@ -20,6 +20,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.rbac import Role
+from app.db.roles import visible_to_sql
 from app.rag.store.base import SearchHit
 
 
@@ -38,9 +39,10 @@ class PgVectorStore:
         document_ids: list[str] | None = None,
         doc_types: list[str] | None = None,
     ) -> list[SearchHit]:
-        filters = ["c.embedding IS NOT NULL", "c.allowed_roles && :roles"]
+        role_filter, role_params = visible_to_sql("c.allowed_roles", roles, "postgresql")
+        filters = ["c.embedding IS NOT NULL", role_filter]
         params: dict[str, object] = {
-            "roles": [role.value for role in roles],
+            **role_params,
             "limit": limit,
             # pgvector accepts the literal form; asyncpg has no native binding
             # for the vector type, and this avoids registering a codec purely
@@ -56,8 +58,8 @@ class PgVectorStore:
 
         sql = text(
             f"""
-            SELECT c.id, c.document_id, d.title, c.content, c.page, c.section,
-                   c.parent_index,
+            SELECT c.id, c.document_id, d.title, d.doc_type, c.content, c.page,
+                   c.section, c.parent_index,
                    1 - (c.embedding <=> CAST(:query AS vector)) AS score
               FROM chunks c
               JOIN documents d ON d.id = c.document_id
@@ -73,11 +75,12 @@ class PgVectorStore:
                 chunk_id=row[0],
                 document_id=row[1],
                 document_title=row[2],
-                content=row[3],
-                page=row[4],
-                section=row[5],
-                parent_index=row[6],
-                score=float(row[7]),
+                doc_type=row[3],
+                content=row[4],
+                page=row[5],
+                section=row[6],
+                parent_index=row[7],
+                score=float(row[8]),
             )
             for row in rows
         ]

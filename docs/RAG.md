@@ -310,23 +310,77 @@ call cost on the day it ran does not.
 
 ## Does it work?
 
-`scripts/evaluate_retrieval.py` scores 23 hand-written cases against the
+`scripts/evaluate_retrieval.py` scores 28 hand-written cases against the
 synthetic corpus. `--compare` ablates each stage, which is how these numbers
 were arrived at rather than assumed:
 
 ```
-23 cases, top-k 2
+28 cases, top-k 2
 
-fusion only            recall@k  83%   MRR 0.778   role isolation 100%
-+ exact-term boost     recall@k  83%   MRR 0.806   role isolation 100%
-+ cross-encoder        recall@k  94%   MRR 0.917   role isolation 100%
-+ both                 recall@k  94%   MRR 0.944   role isolation 100%
+fusion only            recall@k  70%   MRR 0.696   role isolation 100%
++ exact-term boost     recall@k  74%   MRR 0.739   role isolation 100%
++ cross-encoder        recall@k  83%   MRR 0.783   role isolation 100%
++ both                 recall@k  83%   MRR 0.826   role isolation 100%
 ```
 
-At `top-k 6` recall saturates at 100% and MRR runs 0.817 → 0.958. The corpus is
-six documents, so these are not impressive numbers in absolute terms and are not
-offered as such — what they are for is telling whether the next change to
-chunking or ranking made things better or worse.
+These are worse than the numbers that stood here before, and the pipeline did
+not change. The evaluation did.
+
+The corpus used to hold six documents about six unrelated subjects, which is not
+what a water-treatment business has. A business sells several models of the same
+product, and their manuals are near-copies of one another: the same section
+names, the same procedures, different part numbers and different durations. That
+is where retrieval actually fails in the field, and a corpus without it scores a
+pipeline on the easy half of the problem.
+
+So a seventh document went in — the NG-6800, a twin-tank sibling of the NG-4200,
+with a "Regeneration Cycle" section and a "Resin Replacement" section of its own
+— and five cases that ask a question only the right one of the two can answer.
+The eval harness gained `expect_documents` alongside `expect_sections`, because
+a section-name match cannot tell the two manuals apart and was scoring the wrong
+one as a hit.
+
+94% was the score of a set that could not ask the hard question. 83% is the
+score of one that can. The corpus is still seven documents and these are still
+not impressive numbers in absolute terms — what they are for is telling whether
+the next change to chunking or ranking made things better or worse, and they now
+do that on the cases where it matters.
+
+### What was measured and rejected
+
+Two changes went in, were measured on the set above, and came back out. They are
+recorded because a repository that only lists what worked is not showing you how
+anything was decided.
+
+**Contextual chunk headers.** Standard advice, and it is good advice: embed each
+chunk with its document title and section heading prepended, so a paragraph cut
+out of the middle of a manual carries its subject into its vector. "Set the
+regeneration cycle to 2 a.m." does not say which unit it is about, and every
+manual in the corpus has a paragraph like it.
+
+Measured: no change to the full pipeline at any k, and `fusion only` at top-k 1
+went **down**, 70% → 65%. The reason is visible once the numbers exist. Putting
+the model number on every chunk of a document makes every chunk of that document
+look equally relevant to a question naming the model, so it adds discrimination
+between documents by removing it within them — and the keyword leg and the
+exact-term boost were already handling model numbers, because a model number is
+a code-like token and that is what they are in the pipeline for.
+
+**The analyser's document-type guess as a ranking tiebreak.** Query analysis
+classifies which kind of document should answer a question. An earlier version
+passed that to both search legs as a hard filter, which excluded the radon
+manual from "why is the water warm since the radon system was installed" —
+the cheap model saw "installed" and guessed `sop`. That much was already
+recorded. The obvious repair is to demote it from a filter to a tiebreak below
+the reranker's score.
+
+Measured: no improvement on the eval set, and it broke the same test, because
+with the SOP and the radon manual scored close together a tiebreak *is* a
+filter. `doc_type` now reaches the ranker on every `SearchHit` and the ranker
+ignores it. It is displayed in the retrieval inspector, which is the only thing
+it is for.
+
+---
 
 **Role isolation** is the row that would matter most if it moved. Those cases
 name documents a role must never retrieve. Note that this is not the same as

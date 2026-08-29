@@ -136,7 +136,8 @@ export default function SearchPage() {
                     <div>
                       <h2 className={styles.hitTitle}>{hit.documentTitle}</h2>
                       <p className={styles.hitPath}>
-                        {hit.section ?? "—"}
+                        {hit.docType}
+                        {` · ${hit.section ?? "—"}`}
                         {hit.page ? ` · page ${hit.page}` : ""}
                       </p>
                     </div>

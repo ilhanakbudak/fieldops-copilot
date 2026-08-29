@@ -23,6 +23,11 @@ retrieval matches the chunk and the prompt receives the parent.
 The parent is not stored twice. `parent_index` groups chunks and the section is
 reassembled from its members at query time, which also means re-tuning the
 parent size later does not require re-ingesting the corpus.
+
+A fourth idea was tried and rejected: prepending the document title and section
+heading to the text that gets *embedded*, so that a chunk carries its subject
+into its vector. It is the standard advice and it did nothing here — see the
+"What was measured and rejected" section of docs/RAG.md.
 """
 
 from __future__ import annotations

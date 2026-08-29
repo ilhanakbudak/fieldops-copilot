@@ -9,14 +9,15 @@ it returns the true nearest neighbours, which makes it a useful oracle to check
 the approximate index against. At a few hundred thousand it would be hopeless,
 which is precisely the work pgvector's HNSW does in production.
 
-The role filter still runs in SQL rather than in Python, for the same reason as
-the Postgres store: filtering after the fact means the restricted rows were read
-and are one careless refactor away from being used.
+The role filter runs in SQL rather than in Python, for the same reason as the
+Postgres store: filtering after the fact means the restricted rows were read and
+are one careless refactor away from being used. On SQLite `allowed_roles` is a
+JSON array, so the overlap is a set of `LIKE`s — see app/db/roles.py, which is
+the one place that knows how that predicate is spelled in each dialect.
 """
 
 from __future__ import annotations
 
-import json
 import struct
 
 import numpy as np
@@ -24,6 +25,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.rbac import Role
+from app.db.roles import visible_to_sql
 from app.rag.store.base import SearchHit
 
 
@@ -42,10 +44,8 @@ class SqliteVectorStore:
         document_ids: list[str] | None = None,
         doc_types: list[str] | None = None,
     ) -> list[SearchHit]:
-        wanted = {role.value for role in roles}
-
-        filters = ["c.embedding IS NOT NULL"]
-        params: dict[str, object] = {}
+        role_filter, params = visible_to_sql("c.allowed_roles", roles, "sqlite")
+        filters = ["c.embedding IS NOT NULL", role_filter]
         if document_ids:
             placeholders = ",".join(f":doc{i}" for i in range(len(document_ids)))
             filters.append(f"c.document_id IN ({placeholders})")
@@ -59,8 +59,8 @@ class SqliteVectorStore:
             await self._session.execute(
                 text(
                     f"""
-                    SELECT c.id, c.document_id, d.title, c.content, c.page,
-                           c.section, c.parent_index, c.embedding, c.allowed_roles
+                    SELECT c.id, c.document_id, d.title, d.doc_type, c.content,
+                           c.page, c.section, c.parent_index, c.embedding
                       FROM chunks c
                       JOIN documents d ON d.id = c.document_id
                      WHERE {" AND ".join(filters)}
@@ -73,16 +73,9 @@ class SqliteVectorStore:
         if not rows:
             return []
 
-        # SQLite has no array type, so `allowed_roles` is a JSON list and the
-        # overlap test happens here. Still before scoring, so a chunk the caller
-        # may not see is never ranked and never returned.
-        visible = [row for row in rows if wanted & set(json.loads(row[8]))]
-        if not visible:
-            return []
-
         dimensions = len(query_vector)
         matrix = np.array(
-            [struct.unpack(f"{dimensions}f", row[7]) for row in visible], dtype=np.float32
+            [struct.unpack(f"{dimensions}f", row[8]) for row in rows], dtype=np.float32
         )
         query = np.array(query_vector, dtype=np.float32)
 
@@ -96,13 +89,14 @@ class SqliteVectorStore:
         top = np.argsort(-scores)[:limit]
         return [
             SearchHit(
-                chunk_id=visible[index][0],
-                document_id=visible[index][1],
-                document_title=visible[index][2],
-                content=visible[index][3],
-                page=visible[index][4],
-                section=visible[index][5],
-                parent_index=visible[index][6],
+                chunk_id=rows[index][0],
+                document_id=rows[index][1],
+                document_title=rows[index][2],
+                doc_type=rows[index][3],
+                content=rows[index][4],
+                page=rows[index][5],
+                section=rows[index][6],
+                parent_index=rows[index][7],
                 score=float(scores[index]),
             )
             for index in top

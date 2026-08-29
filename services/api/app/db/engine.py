@@ -92,7 +92,9 @@ async def dispose_engine() -> None:
     _sessionmaker = None
 
 
-async def apply_principal(session: AsyncSession, principal: Principal | None) -> None:
+async def apply_principal(
+    session: AsyncSession, principal: Principal | None, *, service: bool = False
+) -> None:
     """Tell Postgres who is asking.
 
     The row-level security policies in the migration read these settings, which
@@ -104,8 +106,22 @@ async def apply_principal(session: AsyncSession, principal: Principal | None) ->
     connection cannot leak one request's identity into the next. On SQLite this
     is a no-op — the local fallback has application-level filtering only, which
     is stated plainly in docs/SECURITY.md rather than glossed over.
+
+    `service=True` is the one identity that is not an employee: ingestion,
+    re-indexing and seeding write the corpus with nobody signed in, and the
+    policies in migration 0002 name `service` alongside `admin` for exactly
+    that. It is a keyword argument rather than a role on `Principal` because a
+    role on `Principal` would also be a document audience, and a caller must
+    never be able to become one by having their role changed.
     """
     if session.bind is None or session.bind.dialect.name != "postgresql":
+        return
+
+    if service:
+        if principal is not None:
+            raise ValueError("A transaction is either an employee's or the service's, not both.")
+        await session.execute(text("SELECT set_config('app.user_id', '', true)"))
+        await session.execute(text("SELECT set_config('app.role', 'service', true)"))
         return
 
     if principal is None:
@@ -124,11 +140,18 @@ async def apply_principal(session: AsyncSession, principal: Principal | None) ->
 
 
 @asynccontextmanager
-async def session_scope(principal: Principal | None = None) -> AsyncIterator[AsyncSession]:
+async def session_scope(
+    principal: Principal | None = None, *, service: bool = False
+) -> AsyncIterator[AsyncSession]:
     """A transaction that commits on success and rolls back on anything else.
 
-    Used outside HTTP — the CLI, ingestion, the demo-mode boot path. The
-    telemetry buffer is opened around it for the same reason the middleware
+    Used outside HTTP — the CLI, ingestion, the demo-mode boot path. Those
+    write the corpus with no employee signed in, so they pass `service=True`;
+    without it Postgres refuses the insert, which is the row-level security
+    policies working correctly on a caller that never said who it was. The
+    escape hatch is a keyword rather than a default so it is greppable.
+
+    The telemetry buffer is opened around it for the same reason the middleware
     opens one per request: an `audit()` call made while this transaction is open
     must not try to write on a second connection, or SQLite deadlocks against
     itself.
@@ -138,7 +161,7 @@ async def session_scope(principal: Principal | None = None) -> AsyncIterator[Asy
     from app.audit.log import telemetry_unit
 
     async with telemetry_unit(), get_sessionmaker()() as session:
-        await apply_principal(session, principal)
+        await apply_principal(session, principal, service=service)
         try:
             yield session
             await session.commit()

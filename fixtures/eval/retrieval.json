@@ -3,17 +3,24 @@
     "A retrieval evaluation set. Each case names the question and the role",
     "asking it, then asserts one of three things:",
     "",
-    "  expect_sections   at least one of these must reach the top k — recall",
-    "  forbid_documents  none of these may be retrieved at all — role isolation",
+    "  expect_sections   at least one of these must reach the top k \u2014 recall",
+    "  forbid_documents  none of these may be retrieved at all \u2014 role isolation",
     "  expect_empty      nothing at all should come back",
     "",
-    "The distinction between the last two matters. A role that cannot read the",
-    "service manual may still legitimately retrieve the warranty policy for the",
-    "same question; asserting an empty result there would be testing the wrong",
-    "thing and would fail for the right reasons.",
+    "A recall case may add `expect_documents`, which requires the section to",
+    "have come from one of the named documents. The corpus holds two service",
+    "manuals for two models of the same softener, and they have a section",
+    "called 'Resin Replacement' each. Retrieving the wrong one is an answer",
+    "with the wrong part number in it, delivered confidently \u2014 and a check on",
+    "the section name alone scores it as a hit.",
+    "",
+    "The distinction between forbid_documents and expect_empty matters. A role",
+    "that cannot read the service manual may still legitimately retrieve the",
+    "warranty policy for the same question; asserting an empty result there",
+    "would be testing the wrong thing and would fail for the right reasons.",
     "",
     "Written by hand against the synthetic corpus, which is the only honest way",
-    "to build one of these — a set generated from the same embeddings it is",
+    "to build one of these \u2014 a set generated from the same embeddings it is",
     "meant to evaluate measures nothing."
   ],
   "cases": [
@@ -171,10 +178,10 @@
       "id": "manual-hidden-from-sales",
       "question": "What does error code E-04 mean?",
       "role": "sales",
-      "note": "Sales may still retrieve the warranty policy for this question — what must not happen is the service manual appearing.",
+      "note": "Sales may still retrieve the warranty policy for this question \u2014 what must not happen is the service manual appearing.",
       "forbid_documents": [
-        "NG-4200 Water Softener — Service Manual",
-        "NG-RN Radon Water Aeration System — Service Manual"
+        "NG-4200 Water Softener \u2014 Service Manual",
+        "NG-RN Radon Water Aeration System \u2014 Service Manual"
       ]
     },
     {
@@ -190,7 +197,7 @@
       "question": "What is our procedure before starting a whole house installation?",
       "role": "sales",
       "forbid_documents": [
-        "Standard Operating Procedure — Whole-House Installation"
+        "Standard Operating Procedure \u2014 Whole-House Installation"
       ]
     },
     {
@@ -209,6 +216,65 @@
         "1. Equipment"
       ],
       "note": "The other side of the boundary: an admin reads every audience."
+    },
+    {
+      "id": "resin-part-4200",
+      "question": "Which resin do I order for the NG-4200?",
+      "role": "technician",
+      "expect_sections": [
+        "4. Resin Replacement"
+      ],
+      "expect_documents": [
+        "NG-4200 Water Softener \u2014 Service Manual"
+      ],
+      "note": "Both softener manuals have this section and they specify different parts. The passage text barely differs; the document it belongs to is the whole answer."
+    },
+    {
+      "id": "resin-part-6800",
+      "question": "Which resin do I order for the NG-6800?",
+      "role": "technician",
+      "expect_sections": [
+        "4. Resin Replacement"
+      ],
+      "expect_documents": [
+        "NG-6800 Twin-Tank Water Softener \u2014 Service Manual"
+      ],
+      "note": "The other half of the pair. Retrieving the NG-4200 here is the failure."
+    },
+    {
+      "id": "regen-duration-4200",
+      "question": "How long does a full regeneration take on the NG-4200?",
+      "role": "technician",
+      "expect_sections": [
+        "3. Regeneration Cycle"
+      ],
+      "expect_documents": [
+        "NG-4200 Water Softener \u2014 Service Manual"
+      ],
+      "note": "96 minutes on the 4200, 74 on the 6800. Same section name in both."
+    },
+    {
+      "id": "regen-duration-6800",
+      "question": "How long is a regeneration cycle on the twin tank 6800?",
+      "role": "technician",
+      "expect_sections": [
+        "3. Regeneration Cycle"
+      ],
+      "expect_documents": [
+        "NG-6800 Twin-Tank Water Softener \u2014 Service Manual"
+      ]
+    },
+    {
+      "id": "code-e07-twin-tank",
+      "question": "What does E-07 mean on the twin tank softener?",
+      "role": "technician",
+      "expect_sections": [
+        "E-07 Tank Switch Failure"
+      ],
+      "expect_documents": [
+        "NG-6800 Twin-Tank Water Softener \u2014 Service Manual"
+      ],
+      "note": "A code that exists in one manual and not the other."
     }
   ]
 }

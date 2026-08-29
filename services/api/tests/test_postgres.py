@@ -381,3 +381,52 @@ async def test_a_conversation_is_invisible_to_another_employee_in_the_database(
 
     assert conversations == 0
     assert messages == 0
+
+
+def _document(role: Role) -> Document:
+    return Document(
+        id=new_id(),
+        title="Ingested With Nobody Signed In",
+        doc_type="manual",
+        source_filename="boot.pdf",
+        content_hash=new_id().replace("-", ""),
+        allowed_roles=[role],
+        status="ready",
+    )
+
+
+async def test_the_service_identity_may_write_the_corpus(pg: AsyncSession) -> None:
+    """Demo-mode boot, `python -m app.cli seed` and re-indexing all write
+    documents with no employee attached.
+
+    The write policies in migration 0002 name `service` alongside `admin` for
+    exactly this. Until it was asserted here, nothing in the application ever
+    set that role — so seeding a Postgres deployment failed on a policy the
+    migration's own comment said would allow it.
+    """
+    await apply_principal(pg, None, service=True)
+    pg.add(_document(Role.TECHNICIAN))
+    await pg.commit()
+
+    await apply_principal(pg, _principal(Role.ADMIN))
+    count = (await pg.execute(text("SELECT count(*) FROM documents"))).scalar_one()
+
+    assert count == 1
+
+
+async def test_a_transaction_that_never_said_who_it_was_may_not_write(pg: AsyncSession) -> None:
+    """The other half of the same policy, and the reason the escape hatch is a
+    keyword argument rather than the default: an anonymous transaction is
+    refused rather than quietly privileged."""
+    await apply_principal(pg, None)
+    pg.add(_document(Role.TECHNICIAN))
+
+    with pytest.raises(ProgrammingError, match="row-level security"):
+        await pg.commit()
+
+    await pg.rollback()
+
+
+async def test_an_identity_is_either_an_employee_or_the_service(pg: AsyncSession) -> None:
+    with pytest.raises(ValueError, match="not both"):
+        await apply_principal(pg, _principal(Role.ADMIN), service=True)

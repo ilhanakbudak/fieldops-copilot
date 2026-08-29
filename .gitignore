@@ -27,14 +27,17 @@ __pycache__/
 .pytest_cache/
 *.egg-info/
 
-# Data, models, uploads
-data/
-uploads/
-storage/
+# Runtime data, uploads and downloaded model weights.
+# Anchored to the repository root on purpose: a bare `models/` also matched
+# `services/api/app/db/models/` and quietly kept the ORM package out of the
+# repository, so the published clone did not import.
+/data/
+/uploads/
+/storage/
+/models/
 *.db
 *.sqlite3
 .fastembed_cache/
-models/
 
 # Coverage & logs
 coverage/

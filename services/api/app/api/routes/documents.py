@@ -27,6 +27,7 @@ from app.audit import audit
 from app.auth.rbac import Permission, Role
 from app.core.errors import ApiError, NotFoundError
 from app.db.models import Chunk, Document
+from app.db.roles import visible_to
 from app.rag.embed import get_embedding_provider
 from app.rag.extract import UnsupportedDocumentError
 from app.rag.ingest import delete_document, ingest_document, reindex_document, retag_document
@@ -68,20 +69,15 @@ async def list_documents(db: DbDep, principal: PrincipalDep) -> list[DocumentSum
     audience. Same rule as retrieval, applied in the query rather than by
     trimming the list afterwards.
     """
+    dialect = db.bind.dialect.name if db.bind is not None else "sqlite"
     query = (
         select(Document, func.count(Chunk.id))
         .outerjoin(Chunk, Chunk.document_id == Document.id)
+        .where(visible_to(Document.allowed_roles, principal.document_roles, dialect))
         .group_by(Document.id)
         .order_by(Document.created_at.desc())
         .options(selectinload(Document.chunks).load_only(Chunk.id))
     )
-
-    rows = (await db.execute(query)).all()
-    visible = [
-        (document, count)
-        for document, count in rows
-        if principal.document_roles & set(document.allowed_roles)
-    ]
 
     return [
         DocumentSummary(
@@ -97,7 +93,7 @@ async def list_documents(db: DbDep, principal: PrincipalDep) -> list[DocumentSum
             ingested_at=document.ingested_at,
             created_at=document.created_at,
         )
-        for document, count in visible
+        for document, count in (await db.execute(query)).all()
     ]
 
 
@@ -227,6 +223,7 @@ async def search(
                 chunk_id=hit.chunk_id,
                 document_id=hit.document_id,
                 document_title=hit.document_title,
+                doc_type=hit.doc_type,
                 content=hit.content,
                 page=hit.page,
                 section=hit.section,
@@ -240,12 +237,19 @@ async def search(
 
 @router.get("/{document_id}", response_model=DocumentSummary)
 async def get_document(document_id: str, db: DbDep, principal: PrincipalDep) -> DocumentSummary:
+    # The audience test is part of the lookup, so "no such document" and "not
+    # yours" are the same query and therefore the same 404. A distinguishable
+    # 403 confirms that a document with that id exists, which is itself
+    # information about the corpus.
+    dialect = db.bind.dialect.name if db.bind is not None else "sqlite"
     document = (
-        await db.execute(select(Document).where(Document.id == document_id))
+        await db.execute(
+            select(Document).where(
+                Document.id == document_id,
+                visible_to(Document.allowed_roles, principal.document_roles, dialect),
+            )
+        )
     ).scalar_one_or_none()
-    # Same 404 whether it does not exist or the caller may not see it. A
-    # distinguishable 403 confirms that a document with that id exists, which is
-    # itself information about the corpus.
-    if document is None or not (principal.document_roles & set(document.allowed_roles)):
+    if document is None:
         raise NotFoundError("No such document.")
     return await _summarise(db, document)

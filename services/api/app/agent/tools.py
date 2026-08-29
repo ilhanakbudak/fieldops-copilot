@@ -55,6 +55,15 @@ class ToolResult:
     # A short line for the "what happened" trail in the UI.
     summary: str = ""
     ok: bool = True
+    # What the call read, for the audit trail. Named by the tool because only
+    # the tool knows: a customer lookup touched a customer, a knowledge search
+    # touched a set of documents. The loop writes the record — see
+    # app/agent/loop.py — but it cannot know what to put in it.
+    resource_type: str | None = None
+    resource_id: str | None = None
+    # Anything else worth keeping about the call. Merged into the audit
+    # record's detail, never shown to the model or the browser.
+    audit: dict[str, Any] = field(default_factory=dict)
 
 
 @runtime_checkable

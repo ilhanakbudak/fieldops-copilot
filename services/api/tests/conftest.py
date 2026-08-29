@@ -57,6 +57,24 @@ def _isolated_database(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Itera
     reset_embedding_provider()
 
 
+@pytest_asyncio.fixture(autouse=True)
+async def _dispose_engine() -> AsyncIterator[None]:
+    """Nothing carries a database connection out of a test.
+
+    `app.db.engine` caches its engine and session factory at module scope, and
+    the fixture above points each test at a fresh SQLite file. A test that
+    touched the database without taking the `client` or `db` fixture — the
+    agent-loop tests do, because auditing a tool call is a write — would
+    otherwise leave that factory pointing at its own `tmp_path`, and the next
+    test to migrate would migrate the previous test's file. The failure lands
+    as "no such table: users" in an unrelated file, which is a bad afternoon.
+    """
+    yield
+    from app.db.engine import dispose_engine
+
+    await dispose_engine()
+
+
 def _new_client() -> AsyncClient:
     from app.main import app
 
