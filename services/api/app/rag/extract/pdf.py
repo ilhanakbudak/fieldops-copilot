@@ -82,7 +82,12 @@ class PyMuPdfExtractor:
             ) from error
 
         pages: list[ExtractedPage] = []
-        with pymupdf.open(stream=data, filetype="pdf") as document:
+        # PyMuPDF ships `py.typed`, so mypy trusts it — and then finds that
+        # `Document.__init__` carries no annotations, which under `strict` is a
+        # call to an untyped function. Ignored here rather than by relaxing the
+        # setting: the gap is one constructor in one optional dependency, and
+        # `no-untyped-call` is worth keeping everywhere else.
+        with pymupdf.open(stream=data, filetype="pdf") as document:  # type: ignore[no-untyped-call]
             for number, page in enumerate(document, start=1):
                 # "text" mode preserves reading order per block, which is the
                 # closest equivalent to pdfplumber's non-layout output — so

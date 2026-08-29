@@ -5,6 +5,12 @@ set -euo pipefail
 
 run() { printf '=== %s ===\n' "$1"; shift; "$@"; }
 
+# CI installs every extra, and so must this. PyMuPDF and PaddleOCR are optional
+# at runtime and not optional to the type checker: with them absent, mypy treats
+# their imports as `Any` and finds nothing to complain about. That is how a
+# `no-untyped-call` in the PyMuPDF path passed here and failed in CI.
+run "api deps"       uv sync --all-extras --dev --project services/api
+
 run "shared build"   npm run build --workspace packages/shared
 run "web typecheck"  npm run typecheck --workspace apps/web
 run "web lint"       npm run lint --workspace apps/web
