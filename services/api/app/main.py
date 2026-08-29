@@ -21,7 +21,8 @@ from app.api.routes import admin, auth, calls, chat, customers, documents, inven
 from app.api.schemas import HealthResponse
 from app.config import Settings, get_settings
 from app.core.errors import install_error_handlers
-from app.db.engine import dispose_engine, get_sessionmaker, session_scope
+from app.db.engine import dispose_engine, get_engine, get_sessionmaker, session_scope
+from app.db.health import check_rls_backstop
 from app.db.migrate import upgrade_to_head
 from app.db.models import Document
 from app.db.seed import seed_demo_users
@@ -68,6 +69,10 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
         # explains the wait, rather than on somebody's first question where a
         # thirty-second pause is indistinguishable from a hang.
         await asyncio.to_thread(_warm_reranker)
+
+    # Asked before anything is served, because the answer changes what the
+    # security model is actually doing — see app/db/health.py.
+    await check_rls_backstop(get_engine(), settings)
 
     # Tool servers start whatever the mode: an assistant that can tell the time
     # should not need demo data to do it. A server that will not start costs its

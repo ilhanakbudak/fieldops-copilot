@@ -45,7 +45,15 @@ def _isolated_database(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Itera
 
     # Imported here rather than at module scope: `get_settings` is cached, and
     # the cache has to be cleared after the environment is set, not before.
-    from app.config import get_settings
+    from app.config import Settings, get_settings
+
+    # A developer's `.env` must not reach the suite. It sits at the repository
+    # root and is loaded by default so that one file serves both halves of the
+    # monorepo — which also means a machine with real credentials in it would
+    # run these tests against OpenAI and a real Postgres, and a machine without
+    # would not. Tests configure themselves, entirely, from the lines above.
+    monkeypatch.setitem(Settings.model_config, "env_file", None)
+
     from app.connectors import reset_telephony
     from app.rag.embed import reset_embedding_provider
     from app.realtime.hub import reset_call_hub

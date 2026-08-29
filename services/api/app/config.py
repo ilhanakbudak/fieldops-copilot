@@ -16,9 +16,20 @@ Environment = Literal["development", "test", "production"]
 # Repository-relative default for the credential-free path: services/api/data.
 _DEFAULT_SQLITE_PATH = Path(__file__).resolve().parent.parent / "data" / "fieldops.db"
 
+# app/ → services/api → services → repository root.
+_REPO_ROOT = Path(__file__).resolve().parents[3]
+
+# One `.env` for both halves of the monorepo, at the root, beside the
+# `.env.example` the README tells you to copy. A bare `env_file=".env"` resolves
+# against the *working directory*, which for the API is `services/api` — so the
+# documented setup produced a service that silently ignored every credential in
+# the file it had just been given. Both are listed, root first, so a local
+# override next to the service still wins.
+_ENV_FILES = (_REPO_ROOT / ".env", Path(".env"))
+
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+    model_config = SettingsConfigDict(env_file=_ENV_FILES, extra="ignore")
 
     environment: Environment = "development"
 

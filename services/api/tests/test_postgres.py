@@ -430,3 +430,63 @@ async def test_a_transaction_that_never_said_who_it_was_may_not_write(pg: AsyncS
 async def test_an_identity_is_either_an_employee_or_the_service(pg: AsyncSession) -> None:
     with pytest.raises(ValueError, match="not both"):
         await apply_principal(pg, _principal(Role.ADMIN), service=True)
+
+
+async def test_the_row_level_security_backstop_is_checked_at_boot(pg: AsyncSession) -> None:
+    """CI connects as `fieldops_app`, which has no bypass, so this passes here.
+
+    It is worth having as a test because the interesting case cannot be tested:
+    a role *with* `BYPASSRLS` would make every other assertion in this file pass
+    while proving nothing, which is exactly the failure the check exists to
+    catch. See app/db/health.py.
+    """
+    from app.config import get_settings
+    from app.db.engine import get_engine
+    from app.db.health import check_rls_backstop
+
+    assert await check_rls_backstop(get_engine(), get_settings())
+
+
+async def test_the_platform_roles_hold_no_privileges_on_this_schema(pg: AsyncSession) -> None:
+    """Migration 0004, asserted where it can be.
+
+    CI's container has no `anon` role, so the revoke is a no-op here and this
+    test is checking the shape rather than the fix. It earns its place anyway:
+    if a future migration creates a table and a platform's default privileges
+    grant it away, this is the assertion that notices — and the finding it came
+    from was that `anon`, the role behind a *publishable* API key, had INSERT on
+    `audit_events`, whose append policy allows anyone.
+    """
+    rows = (
+        await pg.execute(
+            text(
+                "SELECT table_name, grantee, privilege_type "
+                "FROM information_schema.role_table_grants "
+                "WHERE table_schema = 'public' "
+                "AND grantee IN ('anon', 'authenticated', 'service_role')"
+            )
+        )
+    ).all()
+
+    assert rows == []
+
+
+async def test_the_append_only_telemetry_policies_are_the_reason_that_matters(
+    pg: AsyncSession,
+) -> None:
+    """`audit_events` accepts an insert from anyone by design — a failed login
+    has no authenticated role, and that attempt is the event worth keeping.
+
+    Which is exactly why no unprivileged role may hold the INSERT *privilege*:
+    the policy is permissive on purpose, so the grant is what has to be closed.
+    """
+    policy = (
+        await pg.execute(
+            text(
+                "SELECT pg_get_expr(polwithcheck, polrelid) FROM pg_policy "
+                "WHERE polname = 'audit_events_append'"
+            )
+        )
+    ).scalar_one()
+
+    assert policy == "true"
