@@ -301,6 +301,39 @@ export interface CustomerRecord {
   outstandingUsd: number;
 }
 
+/* --- Cost --------------------------------------------------------------- */
+
+/** One row of a breakdown — a day, a feature, or a person. */
+export interface CostBucket {
+  label: string;
+  calls: number;
+  inputTokens: number;
+  outputTokens: number;
+  cachedInputTokens: number;
+  costUsd: number;
+  cacheHits: number;
+}
+
+export interface CostSummary {
+  days: number;
+  calls: number;
+  costUsd: number;
+  inputTokens: number;
+  outputTokens: number;
+  /** Of the input tokens, how many the provider served from its prompt cache.
+   *  The number that says whether the prompt is ordered correctly. */
+  cachedInputTokens: number;
+  /** Turns answered from the semantic cache without calling a model at all. */
+  cacheHits: number;
+}
+
+export interface CostReport {
+  summary: CostSummary;
+  byDay: CostBucket[];
+  byFeature: CostBucket[];
+  byUser: CostBucket[];
+}
+
 /* --- Caller lookup -------------------------------------------------------- */
 
 export interface InboundCall {

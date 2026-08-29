@@ -18,8 +18,8 @@
 > customer up, find a part, have a caller's record on screen before the phone is
 > answered, and get a cited suggestion while they are still describing the
 > problem — that works today, with an agent that decides which of those a
-> question actually needs. The cost dashboard and deployment land next; see
-> [Status](#status).
+> question actually needs, and a cost screen that says what all of it cost.
+> Deployment lands next; see [Status](#status).
 
 ---
 
@@ -151,6 +151,26 @@ The webhook itself answers `204` to everything — a verified call, a bad token,
 a malformed body. A status that varied would let anyone on the internet ask this
 business, at whatever rate they liked, which phone numbers belong to its
 customers. See [docs/CALLS.md](docs/CALLS.md).
+
+### And says what all of it cost
+
+<p align="center">
+  <img alt="A cost dashboard: spend, model calls, cache hits, and a breakdown by feature and employee" src="docs/assets/cost.png" width="880">
+</p>
+
+Every model call is its own priced row, at its own model — so the claim that a
+cheap model does query analysis and an expensive one only writes the answer is
+a line on a screen rather than an assertion in a README. An earlier version
+summed both into one figure at the chat model's rate, and the dashboard then
+said the opposite of what the design does.
+
+The semantic cache is the part worth reading about. Keying it on embedding
+similarity alone would have reintroduced the bug the whole retrieval pipeline
+exists to prevent: against real embeddings, *"what does E-04 mean"* and *"what
+does E-14 mean"* score **0.824** — higher than two genuine rewordings of the
+same question. So the cache carries the same guard the retriever does, and the
+extracted part numbers are part of its key. [docs/COST.md](docs/COST.md) has the
+measurements.
 
 ### And keeps helping while they are still talking
 
@@ -435,7 +455,8 @@ fieldops-copilot/
 | 6 · Ply inventory connector, employee administration | ✅ |
 | 7 · RingCentral caller lookup, screen pop over WebSocket | ✅ |
 | 8 · Live call assistance: transcript in, cited suggestions out | ✅ |
-| 9 · Cost dashboard, semantic cache, deployment | ⬜ |
+| 9 · Cost accounting, semantic cache, admin dashboard | ✅ |
+| 10 · Deployment configuration and the demo recording | ⬜ |
 
 **Milestone 1** — Argon2id passwords, revocable server-side sessions with a
 sliding idle window and a hard ceiling, four roles behind one permission table,
@@ -480,7 +501,35 @@ cheap-model actionability classifier that refuses most of a call, suggestions
 built from role-filtered retrieval and the customer's own history, a scripted
 call replayed from the browser so every stage runs for real, and a resizable
 transcript/suggestion split. Plus MCP results rendered as labelled rows rather
-than as the JSON the server happened to send. 342 tests.
+than as the JSON the server happened to send.
+
+**Milestone 9** — per-call cost accounting at the model that actually ran,
+prompt-cache ordering asserted structurally rather than trusted to a comment, an
+audience-scoped semantic cache with an exact-term guard, and an administrator's
+cost dashboard. Plus everything the first run against a real OpenAI key and a
+real Supabase project turned up. 396 tests.
+
+### What the live run found
+
+The repository had been green against a stand-in provider and a container.
+Pointing it at a real key and a real Supabase project found four things no test
+could have:
+
+- **Streamed tool calls were never assembled.** The OpenAI provider yielded
+  content deltas and dropped `tool_calls` fragments on the floor, so against a
+  real key the agent never called a tool — the headline behaviour of milestone 4,
+  passing its tests only because the demo provider routes tools itself.
+- **Supabase's own `postgres` role carries `BYPASSRLS`.** Every policy in
+  migration 0002 is inert on the connection string the dashboard hands you, and
+  they all still show as present. The service now checks at boot: loudly in
+  development, fatally in production.
+- **`anon` held INSERT on `audit_events`.** Supabase's default privileges grant
+  the role behind the *publishable* API key full DML on every new table, and the
+  audit table's append policy is permissive by design — a failed login has no
+  authenticated role. A trail the public can forge is not a trail. Migration
+  0004 revokes them.
+- **The `.env` the README told you to create was never read.** It sits at the
+  repository root; the API resolved `.env` against `services/api`.
 
 ## Documentation
 
@@ -489,6 +538,7 @@ than as the JSON the server happened to send. 342 tests.
 | [docs/AGENT.md](docs/AGENT.md) | Tool routing, the MCP integration, and the loop's constraints |
 | [docs/RAG.md](docs/RAG.md) | The whole pipeline, ingest and query, with the measured ablation |
 | [docs/CALLS.md](docs/CALLS.md) | The caller-lookup webhook, why it always answers 204, and the fan-out |
+| [docs/COST.md](docs/COST.md) | Two models, prompt caching, the retrieval budget, and a semantic cache that cannot confuse E-04 with E-14 |
 | [docs/SECURITY.md](docs/SECURITY.md) | Sessions, the role filter, the audit trail |
 | [infra/README.md](infra/README.md) | Migrations, and preparing a Supabase project |
 | [fixtures/README.md](fixtures/README.md) | The synthetic corpus and what each document is for |

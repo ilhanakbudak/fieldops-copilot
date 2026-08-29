@@ -147,6 +147,14 @@ export function CopyIcon(props: SVGProps<SVGSVGElement>) {
   );
 }
 
+export function CostIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg {...base} width="18" height="18" {...props}>
+      <path d="M4 19V5M4 19h16M8 16v-5M13 16V8M18 16v-3" />
+    </svg>
+  );
+}
+
 export function ChevronIcon(props: SVGProps<SVGSVGElement>) {
   return (
     <svg {...base} width="12" height="12" {...props}>

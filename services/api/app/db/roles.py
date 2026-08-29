@@ -35,6 +35,18 @@ from sqlalchemy.orm import InstrumentedAttribute
 from app.auth.rbac import Role
 
 
+def audience_key(roles: frozenset[Role]) -> str:
+    """The caller's document audience, as one comparable string.
+
+    Used by the semantic cache, where the audience is part of the key rather
+    than a filter applied to the result — an answer built from a technician's
+    documents must not be served to a salesperson. Sorted and joined rather
+    than hashed, so an operator reading that table can see the boundary working
+    without a lookup.
+    """
+    return ",".join(sorted(role.value for role in roles))
+
+
 def visible_to(
     column: InstrumentedAttribute[list[Role]], roles: frozenset[Role], dialect: str
 ) -> ColumnElement[bool]:

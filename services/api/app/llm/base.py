@@ -70,6 +70,12 @@ class Usage:
     # caching is working.
     cached_input_tokens: int = 0
 
+    @property
+    def total(self) -> int:
+        """Tokens on this call. Zero means nothing was spent and nothing needs
+        recording — a provider that never answered, or one that costs nothing."""
+        return self.input_tokens + self.output_tokens
+
     def __add__(self, other: Usage) -> Usage:
         return Usage(
             input_tokens=self.input_tokens + other.input_tokens,

@@ -1,0 +1,110 @@
+.filters {
+  display: flex;
+  gap: var(--space-2);
+  margin-bottom: var(--space-5);
+}
+
+.tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+  gap: var(--space-4);
+  margin-bottom: var(--space-6);
+}
+
+.tile {
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-4);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+}
+
+.tileLabel {
+  font-size: var(--text-xs);
+  color: var(--text-tertiary);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.tileValue {
+  font-size: var(--text-2xl);
+  font-weight: 600;
+  /* Four figures that change on every reload, in a row. Proportional digits
+     make them jitter sideways as they update. */
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+  line-height: 1.1;
+}
+
+.panel {
+  padding: var(--space-5);
+  margin-bottom: var(--space-6);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  min-width: 0;
+}
+
+.panelTitle {
+  margin: 0;
+  font-size: var(--text-lg);
+  font-weight: 600;
+  color: var(--text);
+}
+
+.note {
+  margin: var(--space-2) 0 var(--space-4);
+  max-width: 56ch;
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
+.split {
+  display: grid;
+  gap: var(--space-6);
+}
+
+@media (min-width: 1080px) {
+  .split { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .split .panel { margin-bottom: 0; }
+}
+
+.numeric {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.rowName { display: block; }
+
+/* Underneath the name rather than in its own column: the comparison is
+   secondary to the label, and a column of bars beside a column of numbers says
+   the same thing twice at the same weight. */
+.inlineBar {
+  display: block;
+  height: 3px;
+  margin-top: var(--space-2);
+  min-width: 2px;
+  background: var(--accent-500);
+  border-radius: var(--radius-full);
+}
+
+.cached { color: var(--text-tertiary); }
+
+.quiet {
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--text-tertiary);
+}
+
+.error {
+  margin: 0 0 var(--space-4);
+  font-size: var(--text-sm);
+  color: var(--danger-700);
+}
+
+@media (max-width: 767px) {
+  .numeric { text-align: left; }
+}

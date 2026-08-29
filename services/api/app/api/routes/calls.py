@@ -94,6 +94,7 @@ from app.core.errors import NotFoundError
 from app.core.ids import new_id
 from app.db.engine import session_scope
 from app.llm import get_llm_provider
+from app.llm.base import Usage
 from app.llm.pricing import cost_usd
 from app.realtime import get_call_hub
 from app.realtime.assist import Suggestion, classify, suggest
@@ -530,7 +531,6 @@ class _AssistSession:
 
         async with session_scope(self.principal) as db:
             suggestion_id = new_id()
-            usage = verdict.usage
             latest = None
 
             async for suggestion in suggest(
@@ -553,18 +553,28 @@ class _AssistSession:
             if latest is not None:
                 await self._send(_suggestion_out(suggestion_id, latest, streaming=False))
 
+        # Two rows, not one. The triage call runs on the cheap model and the
+        # suggestion on the good one, and summing them under a single model
+        # prices the cheap half at the expensive rate — which would make the
+        # dashboard say the opposite of what the design does.
+        await self._bill("call_triage", llm.cheap_model, verdict.usage)
         if latest is not None:
-            usage = usage + latest.usage
-            await record_usage(
-                feature="call_assist",
-                provider=llm.name,
-                model=llm.chat_model,
-                input_tokens=usage.input_tokens,
-                output_tokens=usage.output_tokens,
-                cached_input_tokens=usage.cached_input_tokens,
-                cost_usd=cost_usd(llm.chat_model, usage),
-                principal=self.principal,
-            )
+            await self._bill("call_assist", llm.chat_model, latest.usage)
+
+    async def _bill(self, feature: str, model: str, usage: Usage) -> None:
+        if not usage.total:
+            return
+        llm = get_llm_provider()
+        await record_usage(
+            feature=feature,
+            provider=llm.name,
+            model=model,
+            input_tokens=usage.input_tokens,
+            output_tokens=usage.output_tokens,
+            cached_input_tokens=usage.cached_input_tokens,
+            cost_usd=cost_usd(model, usage),
+            principal=self.principal,
+        )
 
     async def _send(self, message: dict[str, Any]) -> None:
         with contextlib.suppress(RuntimeError, WebSocketDisconnect):

@@ -58,6 +58,22 @@ class Settings(BaseSettings):
     chat_model: str = "gpt-5.6-terra"
     cheap_model: str = "gpt-5.6-luna"
 
+    # Unset by default, and sent only when set. Several current models accept
+    # only their own default and reject the request outright rather than
+    # ignoring the parameter — see app/llm/openai.py.
+    llm_temperature: float | None = Field(default=None, ge=0.0, le=2.0)
+
+    # Also sent only when set, and the one setting a reasoning-capable model
+    # will not run without.
+    #
+    # This assistant is an agent: the chat path always offers tools. Several
+    # reasoning models refuse function tools on `/v1/chat/completions` unless
+    # reasoning effort is explicitly `none`, and they refuse with a 400 rather
+    # than a degraded answer — so on such a model this is not a tuning knob but
+    # the difference between working and not. The failure is legible in the log
+    # either way; see app/llm/openai.py.
+    llm_reasoning_effort: Literal["none", "low", "medium", "high"] | None = None
+
     # --- Connectors ---------------------------------------------------------
     # The mock is a synthetic water-treatment business, so the CRM tools work on
     # a fresh clone. Service Fusion issues credentials to its customers, not to
@@ -76,6 +92,26 @@ class Settings(BaseSettings):
     # for it — a demo secret in a settings file is a secret somebody commits.
     telephony_provider: Literal["mock", "ringcentral"] = "mock"
     ringcentral_verification_token: str | None = None
+
+    # --- Semantic cache -------------------------------------------------------
+    # Two employees asking the same question in different words is the common
+    # case in a business where forty people share one manual. See
+    # app/llm/cache.py — including why the caller's audience is part of the key.
+    semantic_cache_enabled: bool = True
+
+    # Cosine similarity a question must reach to be served a stored answer.
+    #
+    # 0.92 rather than a near-identity 0.98, because it is not carrying the
+    # safety on its own: the exact codes in the question are part of the key, so
+    # `E-04` and `E-14` cannot collide however close their vectors are. Measured
+    # against real embeddings — the table in app/llm/cache.py.
+    semantic_cache_threshold: float = Field(default=0.92, ge=0.5, le=1.0)
+
+    # How long an entry stays usable. The corpus changes underneath it —
+    # re-tagging a document's audience does not reach in and invalidate
+    # anything — so this is the blast radius of a stale answer. Turn it down on
+    # a corpus that changes daily.
+    semantic_cache_ttl_hours: int = Field(default=24, ge=1, le=720)
 
     # --- Live call assistance -------------------------------------------------
     # How long a pause after an utterance counts as the speaker having finished

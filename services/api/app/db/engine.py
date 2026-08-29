@@ -21,6 +21,7 @@ from sqlalchemy.ext.asyncio import (
 
 from app.auth.rbac import Principal
 from app.config import Settings, get_settings
+from app.db.roles import audience_key
 
 _engine: AsyncEngine | None = None
 _sessionmaker: async_sessionmaker[AsyncSession] | None = None
@@ -120,23 +121,35 @@ async def apply_principal(
     if service:
         if principal is not None:
             raise ValueError("A transaction is either an employee's or the service's, not both.")
-        await session.execute(text("SELECT set_config('app.user_id', '', true)"))
-        await session.execute(text("SELECT set_config('app.role', 'service', true)"))
+        await _settings_for(session, user_id="", role="service", audience="")
         return
 
     if principal is None:
-        await session.execute(text("SELECT set_config('app.user_id', '', true)"))
-        await session.execute(text("SELECT set_config('app.role', '', true)"))
+        await _settings_for(session, user_id="", role="", audience="")
         return
 
-    await session.execute(
-        text("SELECT set_config('app.user_id', :user_id, true)"),
-        {"user_id": principal.user_id},
+    # `app.audience` alongside `app.role`, because one policy needs the set of
+    # document audiences this caller may read rather than the name of their
+    # role. Sent rather than derived in SQL: deriving it would put a copy of
+    # `document_roles_for` in a policy, and two copies of an access rule is one
+    # more than is safe.
+    await _settings_for(
+        session,
+        user_id=principal.user_id,
+        role=principal.role.value,
+        audience=audience_key(principal.document_roles),
     )
-    await session.execute(
-        text("SELECT set_config('app.role', :role, true)"),
-        {"role": principal.role.value},
-    )
+
+
+async def _settings_for(session: AsyncSession, *, user_id: str, role: str, audience: str) -> None:
+    for name, value in (
+        ("app.user_id", user_id),
+        ("app.role", role),
+        ("app.audience", audience),
+    ):
+        await session.execute(
+            text("SELECT set_config(:name, :value, true)"), {"name": name, "value": value}
+        )
 
 
 @asynccontextmanager

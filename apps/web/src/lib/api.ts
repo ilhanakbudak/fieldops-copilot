@@ -1,6 +1,7 @@
 import type {
   ApiErrorBody,
   CallDemo,
+  CostReport,
   CreateUserRequest,
   CustomerRecord,
   CustomerSummary,
@@ -124,6 +125,8 @@ export const api = {
   /** Demo mode only, and signed in: the token forges a screen pop for anybody
    *  who holds it. See services/api/app/api/routes/calls.py. */
   callDemo: () => request<CallDemo>("/calls/demo"),
+
+  costs: (days: number) => request<CostReport>(`/admin/costs?days=${days}`),
 
   users: () => request<UserSummary[]>("/admin/users"),
 

@@ -24,9 +24,11 @@ fault.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 from collections.abc import AsyncIterator
+from datetime import timedelta
 from typing import Any, cast
 
 from fastapi import APIRouter, status
@@ -51,8 +53,10 @@ from app.core.errors import NotFoundError
 from app.core.ids import new_id
 from app.db.engine import session_scope
 from app.db.models import ChatMessage, Conversation
-from app.llm import Message, cost_usd, get_llm_provider
+from app.llm import Message, cache, cost_usd, get_llm_provider
+from app.llm.cache import CacheHit
 from app.rag.cite import resolve
+from app.rag.embed import get_embedding_provider
 from app.rag.search.pipeline import Passage
 
 logger = logging.getLogger("fieldops.chat")
@@ -124,6 +128,15 @@ async def _generate(
             )
 
         yield _sse("start", {"conversationId": conversation_id})
+
+        # Asked before the agent runs, and only for a first turn — a follow-up
+        # means something different in every conversation, so its answer is not
+        # a function of its own words. See app/llm/cache.py.
+        cached = await _cache_lookup(question, principal, settings) if not history else None
+        if cached is not None:
+            async for frame in _replay(cached, conversation_id, question, principal):
+                yield frame
+            return
 
         # One session for the whole turn: tools query the database, and opening
         # a scope per tool call would mean a new transaction — and on Postgres a
@@ -218,6 +231,16 @@ async def _generate(
             cost_usd=cost,
             principal=principal,
         )
+
+        await _cache_store(
+            question,
+            answer.text,
+            [_citation(c) for c in answer.citations],
+            tools_used=[run["name"] for run in tool_runs],
+            has_history=bool(history),
+            principal=principal,
+            settings=settings,
+        )
         await audit(
             "ai.answer",
             principal=principal,
@@ -261,6 +284,152 @@ def _empty_usage() -> Any:
     from app.llm.base import Usage
 
     return Usage()
+
+
+# --- The semantic cache -----------------------------------------------------
+
+
+async def _cache_lookup(question: str, principal: Principal, settings: Settings) -> CacheHit | None:
+    """A stored answer for a question close enough to this one.
+
+    Never fails the turn. A cache that cannot be read is a system that is merely
+    slower, and the embedding call it needs is the one part of this that can be
+    slow or unavailable.
+    """
+    if not settings.semantic_cache_enabled:
+        return None
+
+    try:
+        embedder = get_embedding_provider()
+        vector = await asyncio.to_thread(embedder.embed_query, question)
+        async with session_scope(principal) as db:
+            return await cache.lookup(
+                db,
+                question=question,
+                embedding=vector,
+                principal=principal,
+                threshold=settings.semantic_cache_threshold,
+                ttl=timedelta(hours=settings.semantic_cache_ttl_hours),
+            )
+    except Exception:
+        logger.warning("semantic cache lookup failed; answering normally", exc_info=True)
+        return None
+
+
+async def _cache_store(
+    question: str,
+    answer: str,
+    citations: list[dict[str, Any]],
+    *,
+    tools_used: list[str],
+    has_history: bool,
+    principal: Principal,
+    settings: Settings,
+) -> None:
+    """Keep this answer, if keeping it would be correct.
+
+    `cacheable` is the rule and it lives in one place. What is decided here is
+    only whether to bother asking — an answer with no citations came from a
+    search that found nothing, and storing "I could not find anything" would
+    make the cache good at repeating a failure.
+    """
+    if not settings.semantic_cache_enabled or not citations:
+        return
+    if not cache.cacheable(tools_used=tools_used, has_history=has_history):
+        return
+
+    try:
+        embedder = get_embedding_provider()
+        vector = await asyncio.to_thread(embedder.embed_query, question)
+        async with session_scope(principal) as db:
+            await cache.store(
+                db,
+                question=question,
+                embedding=vector,
+                answer=answer,
+                citations=citations,
+                principal=principal,
+            )
+            # Swept on the way past rather than on a schedule: a background
+            # sweeper is a second thing to run and monitor for a table that is
+            # small by construction.
+            await cache.purge(db, ttl=timedelta(hours=settings.semantic_cache_ttl_hours))
+    except Exception:
+        logger.warning("could not store an answer in the semantic cache", exc_info=True)
+
+
+async def _replay(
+    hit: CacheHit, conversation_id: str, question: str, principal: Principal
+) -> AsyncIterator[str]:
+    """Serve a stored answer down the same stream a fresh one uses.
+
+    The whole text in one `delta` rather than word by word. A cache hit that
+    pretended to type would be a system spending latency to look busy, and the
+    honest thing on a hit is that the answer is simply there.
+    """
+    citations = [
+        CitationOut.model_validate(item) if not isinstance(item, dict) else item
+        for item in hit.citations
+    ]
+    yield _sse("delta", {"text": hit.answer})
+
+    async with session_scope(principal) as db:
+        message_id = new_id()
+        db.add(
+            ChatMessage(
+                id=message_id,
+                conversation_id=conversation_id,
+                role="assistant",
+                content=hit.answer,
+                citations=json.dumps(hit.citations),
+                created_at=utcnow(),
+            )
+        )
+        await _touch(db, conversation_id)
+
+    # Recorded with no tokens and no cost, but recorded. Without this the
+    # dashboard shows spending fall and cannot say whether the cache is working
+    # or everybody stopped asking.
+    llm = get_llm_provider()
+    await record_usage(
+        feature="chat",
+        provider=llm.name,
+        model=llm.chat_model,
+        cost_usd=0.0,
+        cache_hit=True,
+        principal=principal,
+    )
+    await audit(
+        "ai.answer",
+        principal=principal,
+        resource_type="conversation",
+        resource_id=conversation_id,
+        detail={
+            "question": question[:200],
+            "cacheHit": True,
+            "similarity": hit.similarity,
+            "ageSeconds": hit.age_seconds,
+            "citations": len(hit.citations),
+        },
+    )
+
+    yield _sse(
+        "done",
+        {
+            "conversationId": conversation_id,
+            "messageId": message_id,
+            "text": hit.answer,
+            "citations": citations,
+            "tools": [],
+            "cacheHit": True,
+            "usage": {
+                "inputTokens": 0,
+                "outputTokens": 0,
+                "cachedInputTokens": 0,
+                "estimatedCostUsd": 0.0,
+            },
+        },
+    )
 
 
 def _public(data: dict[str, Any]) -> dict[str, Any]:

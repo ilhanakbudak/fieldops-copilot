@@ -1,0 +1,90 @@
+.figure { margin: 0; }
+
+.plot {
+  display: flex;
+  align-items: flex-end;
+  /* 2px between fills, so adjacent bars read as two marks rather than one
+     block. Gap rather than a border: a border would add width to the mark and
+     make the shortest bars wider than their value. */
+  gap: 2px;
+  padding-top: var(--space-5);
+}
+
+.slot {
+  flex: 1 1 0;
+  min-width: 0;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  align-items: center;
+  position: relative;
+  cursor: default;
+}
+
+.slot:focus-visible {
+  outline: 2px solid var(--accent-500);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
+.bar {
+  display: block;
+  width: 100%;
+  /* A week of data must not become five walls. Capped so a short series reads
+     as bars — marks with space around them — rather than as a filled block,
+     which is a different chart saying a different thing. */
+  max-width: 3rem;
+  min-height: 2px;
+  background: var(--accent-500);
+  /* Rounded at the data end only. A rounded foot would lift the mark off the
+     baseline, which is the one place a bar has to be exact. */
+  border-radius: 4px 4px 0 0;
+  transition: background var(--transition);
+}
+
+.slot:hover .bar,
+.barActive { background: var(--accent-700); }
+
+.value {
+  position: absolute;
+  /* In the plot's top padding, above the tallest bar. At `top: 0` it lands
+     inside the bar whenever that bar is the peak — which is exactly the bar it
+     is labelling, so it was unreadable precisely when it mattered. */
+  top: -1.25rem;
+  font-size: var(--text-xs);
+  font-variant-numeric: tabular-nums;
+  /* Text wears text tokens. A number in the series colour reads as another
+     mark rather than as a label for one. */
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+.axis {
+  display: flex;
+  justify-content: space-between;
+  margin-top: var(--space-2);
+  font-size: var(--text-xs);
+  color: var(--text-tertiary);
+}
+
+.empty {
+  margin: 0;
+  padding: var(--space-6) 0;
+  text-align: center;
+  font-size: var(--text-sm);
+  color: var(--text-tertiary);
+}
+
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bar { transition: none; }
+}

@@ -15,7 +15,8 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.ids import new_id
 from app.db.base import Base
-from app.db.types import UtcDateTime
+from app.db.models.documents import EMBEDDING_DIM
+from app.db.types import Embedding, UtcDateTime
 
 
 class AuditEvent(Base):
@@ -62,6 +63,47 @@ class AuditEvent(Base):
     # `SELECT … LIMIT 50`, never queried into, and this keeps the column
     # identical on both dialects.
     detail: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
+class CachedAnswer(Base):
+    """An answer kept against the embedding of the question that produced it.
+
+    `audience_key` is part of the key, not a filter: an answer assembled from
+    one role's documents must never be served to another. See
+    `app/llm/cache.py`, which explains why that costs hit rate and is not
+    negotiable.
+
+    The embedding column is the same `Embedding` type the corpus uses, so this
+    table is `vector(n)` on Postgres and packed floats on SQLite — one schema,
+    two dialects, like everything else here.
+    """
+
+    __tablename__ = "cached_answers"
+    __table_args__ = (
+        Index("ix_cached_answers_audience_key_created_at", "audience_key", "created_at"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    created_at: Mapped[datetime] = mapped_column(UtcDateTime, nullable=False)
+
+    audience_key: Mapped[str] = mapped_column(String(200), nullable=False)
+    # The exact codes and part numbers in the question, sorted and joined. Part
+    # of the key alongside the vector, and the reason is the same one that put a
+    # keyword leg in the retriever: `E-04` and `E-14` embed almost on top of
+    # each other. See app/llm/cache.py.
+    term_key: Mapped[str] = mapped_column(String(300), nullable=False, default="")
+    # Kept for the operator, never for matching. Matching is on the vector.
+    question: Mapped[str] = mapped_column(Text, nullable=False)
+    embedding: Mapped[list[float] | None] = mapped_column(Embedding(EMBEDDING_DIM), nullable=True)
+
+    answer: Mapped[str] = mapped_column(Text, nullable=False)
+    # The resolved citations, as the API sends them. Stored so a hit arrives
+    # with its sources rather than as an unsourced paragraph, which would be a
+    # worse answer than the miss it replaced.
+    citations: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    hits: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    last_hit_at: Mapped[datetime | None] = mapped_column(UtcDateTime, nullable=True)
 
 
 class UsageEvent(Base):

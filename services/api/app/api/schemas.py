@@ -310,6 +310,38 @@ class ScreenPopOut(Schema):
     detail: CustomerDetailOut | None = None
 
 
+class CostBucket(Schema):
+    """One row of a cost breakdown — a user, a feature, or a day."""
+
+    label: str
+    calls: int
+    input_tokens: int
+    output_tokens: int
+    cached_input_tokens: int
+    cost_usd: float
+    cache_hits: int
+
+
+class CostSummary(Schema):
+    days: int
+    calls: int
+    cost_usd: float
+    input_tokens: int
+    output_tokens: int
+    # Of the input tokens, how many were served from the provider's prompt
+    # cache. The number that says whether the prompt is ordered correctly.
+    cached_input_tokens: int
+    # Turns answered from the semantic cache without calling a model at all.
+    cache_hits: int
+
+
+class CostReport(Schema):
+    summary: CostSummary
+    by_day: list[CostBucket]
+    by_feature: list[CostBucket]
+    by_user: list[CostBucket]
+
+
 class CallDemoNumber(Schema):
     number: str
     label: str

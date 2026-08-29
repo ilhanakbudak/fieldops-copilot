@@ -60,10 +60,12 @@ from dataclasses import dataclass, field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.audit import record_usage
 from app.auth.rbac import Principal
 from app.config import Settings, get_settings
 from app.db.models import Chunk, Document
 from app.llm.base import LlmProvider, Usage
+from app.llm.pricing import cost_usd
 from app.rag.analyse import QueryAnalysis, analyse_query
 from app.rag.embed import EmbeddingProvider, get_embedding_provider
 from app.rag.search.fusion import FusedHit, reciprocal_rank_fusion
@@ -131,6 +133,22 @@ async def retrieve(
         if llm is not None
         else QueryAnalysis(original=question, rewritten=question, analysed=False)
     )
+
+    # Recorded here, at the cheap model, rather than folded into whatever the
+    # caller ends up spending. AD-5's claim is that a cheap model does the
+    # analysis and the expensive one only the final answer; a dashboard that
+    # bills both to `chat` at the chat model's price cannot show that, and the
+    # first thing anybody asks a cost dashboard is which half is the money.
+    if llm is not None and analysis.analysed and analysis.usage.total:
+        await record_usage(
+            feature="query_analysis",
+            provider=llm.name,
+            model=llm.cheap_model,
+            input_tokens=analysis.usage.input_tokens,
+            output_tokens=analysis.usage.output_tokens,
+            cached_input_tokens=analysis.usage.cached_input_tokens,
+            cost_usd=cost_usd(llm.cheap_model, analysis.usage),
+        )
 
     hits = await _search(session, analysis, principal, settings, embedder)
     fused = reciprocal_rank_fusion(hits, limit=settings.retrieval_candidates)

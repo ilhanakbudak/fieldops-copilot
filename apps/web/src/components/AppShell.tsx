@@ -12,6 +12,7 @@ import {
   ChatIcon,
   CloseIcon,
   CustomersIcon,
+  CostIcon,
   InventoryIcon,
   LibraryIcon,
   MenuIcon,
@@ -53,6 +54,7 @@ const NAVIGATION: Array<{ label: string; items: NavItem[] }> = [
     label: "Administration",
     items: [
       { href: "/admin/users", label: "Employees", icon: UsersIcon, permission: "users:manage" },
+      { href: "/admin/costs", label: "Cost", icon: CostIcon, permission: "cost:read" },
       { href: "/audit", label: "Audit log", icon: ShieldIcon, permission: "audit:read", soon: true },
     ],
   },
