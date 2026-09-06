@@ -7,7 +7,7 @@
 
 <p align="center">
   <a href="https://github.com/ilhanakbudak/fieldops-copilot/actions/workflows/ci.yml">
-    <img alt="CI" src="https://github.com/ilhanakbudak/fieldops-copilot/actions/workflows/ci.yml/badge.svg"></a>
+    <img alt="CI" src="https://github.com/ilhanakbudak/fieldops-copilot/actions/workflows/ci.yml/badge.svg?branch=main"></a>
   <img alt="Next.js" src="https://img.shields.io/badge/Next.js-16-000000">
   <img alt="FastAPI" src="https://img.shields.io/badge/FastAPI-Python%203.13-009688">
   <img alt="Supabase" src="https://img.shields.io/badge/Supabase-pgvector-3ecf8e">
