@@ -12,12 +12,14 @@ from contextlib import asynccontextmanager
 from typing import Any
 
 from sqlalchemy import event, text
+from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
     AsyncSession,
     async_sessionmaker,
     create_async_engine,
 )
+from sqlalchemy.orm import Session, SessionTransaction
 
 from app.auth.rbac import Principal
 from app.config import Settings, get_settings
@@ -93,6 +95,21 @@ async def dispose_engine() -> None:
     _sessionmaker = None
 
 
+# Where the identity applied by `apply_principal` is remembered, so that
+# `_reapply_identity` can put it back. A key on `Session.info` rather than
+# module state, because two sessions in one process are two different callers.
+_IDENTITY = "fieldops.identity"
+
+# One statement rather than three, because it runs on every transaction rather
+# than once per session — three round trips to Supabase's pooler per transaction
+# is a cost worth not paying for punctuation.
+_SET_IDENTITY = text(
+    "SELECT set_config('app.user_id', :user_id, true), "
+    "set_config('app.role', :role, true), "
+    "set_config('app.audience', :audience, true)"
+)
+
+
 async def apply_principal(
     session: AsyncSession, principal: Principal | None, *, service: bool = False
 ) -> None:
@@ -104,9 +121,12 @@ async def apply_principal(
     return a document the caller's role is not tagged for.
 
     `SET LOCAL` scopes the values to the current transaction, so a pooled
-    connection cannot leak one request's identity into the next. On SQLite this
-    is a no-op — the local fallback has application-level filtering only, which
-    is stated plainly in docs/SECURITY.md rather than glossed over.
+    connection cannot leak one request's identity into the next. It also means
+    the values are gone the moment that transaction ends, which is why the
+    identity is remembered on the session and re-applied by `_reapply_identity`
+    below. On SQLite this is a no-op — the local fallback has
+    application-level filtering only, which is stated plainly in
+    docs/SECURITY.md rather than glossed over.
 
     `service=True` is the one identity that is not an employee: ingestion,
     re-indexing and seeding write the corpus with nobody signed in, and the
@@ -115,41 +135,65 @@ async def apply_principal(
     role on `Principal` would also be a document audience, and a caller must
     never be able to become one by having their role changed.
     """
+    if service and principal is not None:
+        raise ValueError("A transaction is either an employee's or the service's, not both.")
+
     if session.bind is None or session.bind.dialect.name != "postgresql":
         return
 
     if service:
-        if principal is not None:
-            raise ValueError("A transaction is either an employee's or the service's, not both.")
-        await _settings_for(session, user_id="", role="service", audience="")
-        return
-
-    if principal is None:
-        await _settings_for(session, user_id="", role="", audience="")
-        return
-
-    # `app.audience` alongside `app.role`, because one policy needs the set of
-    # document audiences this caller may read rather than the name of their
-    # role. Sent rather than derived in SQL: deriving it would put a copy of
-    # `document_roles_for` in a policy, and two copies of an access rule is one
-    # more than is safe.
-    await _settings_for(
-        session,
-        user_id=principal.user_id,
-        role=principal.role.value,
-        audience=audience_key(principal.document_roles),
-    )
-
-
-async def _settings_for(session: AsyncSession, *, user_id: str, role: str, audience: str) -> None:
-    for name, value in (
-        ("app.user_id", user_id),
-        ("app.role", role),
-        ("app.audience", audience),
-    ):
-        await session.execute(
-            text("SELECT set_config(:name, :value, true)"), {"name": name, "value": value}
+        identity = _identity(user_id="", role="service", audience="")
+    elif principal is None:
+        identity = _identity(user_id="", role="", audience="")
+    else:
+        # `app.audience` alongside `app.role`, because one policy needs the set
+        # of document audiences this caller may read rather than the name of
+        # their role. Sent rather than derived in SQL: deriving it would put a
+        # copy of `document_roles_for` in a policy, and two copies of an access
+        # rule is one more than is safe.
+        identity = _identity(
+            user_id=principal.user_id,
+            role=principal.role.value,
+            audience=audience_key(principal.document_roles),
         )
+
+    session.info[_IDENTITY] = identity
+    await session.execute(_SET_IDENTITY, identity)
+
+
+def _identity(*, user_id: str, role: str, audience: str) -> dict[str, str]:
+    """The bind parameters of `_SET_IDENTITY`, kept together so that what is
+    remembered on the session and what is sent to Postgres cannot drift."""
+    return {"user_id": user_id, "role": role, "audience": audience}
+
+
+@event.listens_for(Session, "after_begin")
+def _reapply_identity(
+    session: Session, _transaction: SessionTransaction, connection: Connection
+) -> None:
+    """Put the caller's identity back on every transaction the session opens.
+
+    `SET LOCAL` dies with its transaction, and a session outlives its
+    transactions. Ingestion is the case that proves it: the document row is
+    committed as `processing` before indexing starts (see app/rag/ingest.py),
+    and every statement after that commit would otherwise run on a transaction
+    that never said who it was — so the policies would refuse to write the
+    chunks, correctly, and uploading a document to a Postgres deployment would
+    fail with a stale-data error nobody could read.
+
+    Done here rather than by re-applying at each call site that commits: a rule
+    that must be remembered every time somebody adds a commit is a rule that
+    will eventually be forgotten, and forgetting it fails only on Postgres,
+    which is the deployment target and not the local fallback.
+    """
+    if connection.dialect.name != "postgresql":
+        return
+
+    identity: dict[str, str] | None = session.info.get(_IDENTITY)
+    if identity is None:
+        return
+
+    connection.execute(_SET_IDENTITY, identity)
 
 
 @asynccontextmanager

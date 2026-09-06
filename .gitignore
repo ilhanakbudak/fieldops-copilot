@@ -8,6 +8,10 @@
 *.pem
 secrets/
 service-account*.json
+# Written by the Supabase CLI on every `supabase link`. Not a credential, but it
+# names the live project and its pooler host, which is enough to point an attack
+# at a real deployment — and nothing here is worth committing anyway.
+infra/supabase/.temp/
 *-[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f].json
 
 # Node

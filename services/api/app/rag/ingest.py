@@ -141,16 +141,21 @@ async def ingest_document(
     # exists whatever happens next.
     await db.commit()
 
+    # Read before the failure path runs: `_mark_failed` rolls back, which expires
+    # every instance in the session, and a lazy refresh from async code is a
+    # `MissingGreenlet` rather than a value.
+    document_id = document.id
+
     try:
         result = await _index(db, document, data, settings, embedder)
         await db.commit()
     except Exception as error:
-        await _mark_failed(db, document, error)
+        await _mark_failed(db, document_id, error)
         await audit(
             "document.ingest",
             outcome="error",
             resource_type="document",
-            resource_id=document.id,
+            resource_id=document_id,
             detail={"filename": filename, "error": str(error)[:300]},
         )
         raise
@@ -211,7 +216,7 @@ async def reindex_document(
         result = await _index(db, document, data, settings, embedder)
         await db.commit()
     except Exception as error:
-        await _mark_failed(db, document, error)
+        await _mark_failed(db, document_id, error)
         await audit(
             "document.reindex",
             outcome="error",
@@ -296,17 +301,21 @@ async def delete_document(db: AsyncSession, document_id: str) -> None:
     )
 
 
-async def _mark_failed(db: AsyncSession, document: Document, error: Exception) -> None:
+async def _mark_failed(db: AsyncSession, document_id: str, error: Exception) -> None:
     """Record why, on its own transaction.
 
     The caller is about to see an exception and roll back. Rolling the reason
     back with it would leave a document stuck in `processing` with nothing to
     explain it.
+
+    Takes the id rather than the instance because the rollback below expires
+    every instance in the session — reading `document.id` afterwards would go
+    back to the database, from a non-await context, and raise.
     """
     await db.rollback()
     await db.execute(
         update(Document)
-        .where(Document.id == document.id)
+        .where(Document.id == document_id)
         .values(status="failed", error=str(error)[:2000])
     )
     await db.commit()

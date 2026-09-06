@@ -67,9 +67,13 @@ So role is a required argument, not an option:
 - On Postgres, **row-level security** enforces the same rule underneath the
   application. Policies read `current_setting('app.role')`, which the API sets
   with `SET LOCAL` on each transaction — `LOCAL` so a pooled connection cannot
-  leak one request's identity into the next. `FORCE ROW LEVEL SECURITY` is set,
-  because without it the table owner (which is the role the application connects
-  as) bypasses its own policies and the exercise protects nobody.
+  leak one request's identity into the next. On *each* transaction, not once per
+  session: `SET LOCAL` is discarded at commit, and the code that commits
+  mid-operation is exactly the code that writes the corpus, so the identity is
+  re-applied from an `after_begin` hook rather than by each call site
+  remembering to. `FORCE ROW LEVEL SECURITY` is set, because without it the
+  table owner (which is the role the application connects as) bypasses its own
+  policies and the exercise protects nobody.
 
 That last layer is the real argument for Postgres over a dedicated vector store.
 A filter in application code is one refactor away from being wrong. A policy in

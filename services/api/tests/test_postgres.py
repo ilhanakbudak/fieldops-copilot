@@ -43,6 +43,33 @@ def _principal(role: Role) -> Principal:
     )
 
 
+async def _employee(session: AsyncSession, principal: Principal) -> None:
+    """Give a principal the `users` row it claims to have.
+
+    Most of this file works on `documents` and `chunks`, which reference nobody,
+    so an invented `user_id` is harmless there. `conversations` has a foreign key
+    to `users` — deliberately, so a deleted employee takes their history with
+    them — and the test for its policy has to satisfy that before it can say
+    anything about row-level security.
+    """
+    from app.db.models import User
+
+    session.add(
+        User(
+            id=principal.user_id,
+            # Unique per principal: `users.email` is unique, and two roles in one
+            # test would otherwise collide.
+            email=f"{principal.user_id}@example.com",
+            full_name=principal.full_name,
+            # Never verified here. Nothing in this file signs in; the login flow
+            # is covered against SQLite in tests/test_auth.py.
+            password_hash="not-a-hash",
+            role=principal.role,
+        )
+    )
+    await session.flush()
+
+
 @pytest_asyncio.fixture
 async def pg(monkeypatch: pytest.MonkeyPatch) -> AsyncIterator[AsyncSession]:
     assert TEST_DATABASE_URL
@@ -196,6 +223,25 @@ async def test_the_expected_indexes_exist(pg: AsyncSession) -> None:
     assert "ix_chunks_embedding_hnsw" in names
     assert "ix_chunks_content_tsv" in names
     assert "ix_chunks_allowed_roles" in names
+
+
+async def test_the_caller_identity_survives_a_commit(pg: AsyncSession) -> None:
+    """`SET LOCAL` ends with its transaction, and the session does not.
+
+    This is the invariant behind `_reapply_identity` in app/db/engine.py, and it
+    is asserted on its own because everything that depends on it fails a long
+    way from the cause: ingestion commits the `processing` row before it indexes
+    anything, so an identity that did not survive that commit made every write
+    after it anonymous — and the policies then refused the chunks, correctly,
+    with a stale-data error that named neither row-level security nor the
+    commit that caused it.
+    """
+    await apply_principal(pg, _principal(Role.ADMIN))
+    await pg.commit()
+
+    role = (await pg.execute(text("SELECT current_setting('app.role', true)"))).scalar_one()
+
+    assert role == "admin"
 
 
 async def test_the_pgvector_store_ranks_and_filters_in_one_query(pg: AsyncSession) -> None:
@@ -359,6 +405,7 @@ async def test_a_conversation_is_invisible_to_another_employee_in_the_database(
 
     owner = _principal(Role.TECHNICIAN)
     await apply_principal(pg, owner)
+    await _employee(pg, owner)
 
     conversation = Conversation(id=new_id(), user_id=owner.user_id, title="E-04 again")
     pg.add(conversation)

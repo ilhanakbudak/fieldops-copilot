@@ -399,11 +399,33 @@ instant. It also ingests the synthetic corpus, six documents of a fictional
 water-treatment company, so there is something to search immediately.
 
 ```bash
-npm run verify              # exactly what CI runs, fail-fast
+npm run verify              # what CI runs against SQLite, fail-fast
 npm run api:migrate         # apply migrations against a real Postgres
 npm run api:seed            # re-seed the demo accounts and corpus
 npm run screenshots         # regenerate the images above from a running instance
 npm run eval                # score retrieval; --compare ablates each stage
+```
+
+`verify` leaves one thing out, and it is worth saying rather than glossing:
+`tests/test_postgres.py` **skips** unless `TEST_DATABASE_URL` is set, so the
+row-level security policies, the generated `tsvector` column and the HNSW index
+are green locally without having been run. CI runs them against a
+`pgvector/pgvector` container on every push and fails if they skipped. To run
+them yourself, against a container or a local `pgvector` install:
+
+```bash
+psql -d fieldops_test <<'SQL'
+  CREATE EXTENSION IF NOT EXISTS vector;
+  -- Not a superuser: a superuser bypasses row-level security even with FORCE,
+  -- so connecting as one would make every policy assertion pass and prove
+  -- nothing. This is the arrangement production uses.
+  CREATE ROLE fieldops_app LOGIN PASSWORD 'fieldops_app';
+  GRANT ALL ON SCHEMA public TO fieldops_app;
+SQL
+
+cd services/api
+TEST_DATABASE_URL=postgresql+asyncpg://fieldops_app:fieldops_app@localhost:5432/fieldops_test \
+  uv run pytest tests/test_postgres.py
 ```
 
 Answers in demo mode come from an **extractive stand-in**, not a language model.
@@ -530,6 +552,15 @@ could have:
   0004 revokes them.
 - **The `.env` the README told you to create was never read.** It sits at the
   repository root; the API resolved `.env` against `services/api`.
+- **The caller's identity did not survive a commit.** `SET LOCAL` is scoped to
+  its transaction, and ingestion commits the document row as `processing` before
+  it starts indexing — deliberately, so a failure leaves a row to explain
+  itself. Every write after that commit therefore ran on a transaction that had
+  never said who it was, and the policies refused the chunks. Correctly: this is
+  the backstop doing its job. Uploading a document to a Postgres deployment
+  failed with a stale-data error that named neither row-level security nor the
+  commit that caused it. The identity is now re-applied whenever the session
+  opens a transaction, rather than at each call site that remembers to.
 
 ## Documentation
 
